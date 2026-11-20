@@ -11,8 +11,9 @@ You can use it for sensors, remote controls, classroom networks, or anything els
 
 ## Requirements
 
-- micro:bit **V2**. Saving uses MakeCode's `settings` library (the flash storage the datalogger extension uses), which only supports V2.
-- The `datalogger` extension is pulled in automatically as a dependency for that reason.
+- A micro:bit with working flash storage (V2).
+- Saving uses a separate flash storage extension, listed as a dependency in `pxt.json`. MakeCode adds it automatically when you add this extension. Its licence (MIT) applies to its own code; this repository only calls it and does not copy it.
+- Flash entries are limited on the micro:bit. This extension keeps its own use small: the name and quiet time share one entry, channels 1-2 share one and channels 3-4 share one, and each variable you save uses one more.
 
 ## Add it to a project
 
@@ -55,11 +56,11 @@ Things to know:
 - There is **no acknowledgement or retry**. If a message is lost to a collision or weak signal it is simply gone.
 - There is **no security**. Anyone on the same radio group can send, and the sender name is only text. Use a different group number for separate networks.
 - Every node repeats everything, so a very chatty network will collide. Keep messages infrequent.
-- Names are 1-12 characters, cannot contain `|`, and cannot be `*`.
+- Names are 1-12 characters, cannot contain `|` or `,`, and cannot be `*`.
 
 ## Sensor channels
 
-A channel has a **kind** (a label of up to 8 characters), a **pin number** and a **threshold**.
+A channel has a **kind** (a label of up to 7 characters), a **pin number** and a **threshold** (0-9999).
 
 | kind | read by | counts as a detection when |
 | --- | --- | --- |
@@ -108,7 +109,8 @@ Replies start with `OK`, `ERR`, `NONE` or are the value itself.
 
 ## Limits
 
-- Saved data belongs to the MakeCode program. Renaming a program may start its saved data empty, and re-flashing may clear it. Check this on your own board before relying on it.
+- Whether saved data survives re-flashing depends on the flash storage extension and the board. Check this on your own board before relying on it.
+- Variable names are limited to 12 characters, and the number of saved variables is limited by the flash storage extension.
 - Writes to flash are skipped when the value hasn't changed, but do not save in a fast loop.
 - micro:bit radio range is a few tens of metres in the open and much less through walls. Test your own layout.
 
