@@ -1,6 +1,7 @@
 /**
  * Channels: up to four sensor inputs per micro:bit. Each channel has a kind
- * (a short label), a pin number and a threshold, and is saved to flash.
+ * (a label of up to 7 characters), a pin number and a threshold (0-9999), and
+ * is saved to flash. Channels 1-2 share one flash entry and 3-4 share another.
  *
  * Built-in kinds (read for you by channel.read):
  *   pir, digital   digital pin; detection when it reads 1
@@ -76,7 +77,7 @@ namespace channel {
     }
 
     function kindOk(k: string): boolean {
-        if (k.length == 0 || k.length > 8) return false
+        if (k.length == 0 || k.length > 7) return false
         for (let i = 0; i < k.length; i++) {
             const c = k.charAt(i)
             if (c == "," || c == " " || c == "|" || c == "=") return false
@@ -94,26 +95,42 @@ namespace channel {
             pinNums.push(0)
             thresholds.push(0)
         }
-        const q = parseFloat(nodestore.getRaw("quiet", "10"))
-        if (!isNaN(q)) quiet = q
-        for (let n = 1; n <= MAX; n++) {
-            const raw = nodestore.getRaw("ch" + n, "")
+        quiet = nodestore.getQuiet(10)
+        // channels 1-2 live in entry "m.a", channels 3-4 in "m.b": "kind,pin,thr;kind,pin,thr"
+        for (let e = 0; e < 2; e++) {
+            const raw = nodestore.getRaw(e == 0 ? "m.a" : "m.b", "")
             if (raw == "") continue
-            const p = raw.split(",")
-            if (p.length != 3) continue
-            const k = p[0]
-            const pn = parseFloat(p[1])
-            const th = parseFloat(p[2])
-            if (k != "off" && kindOk(k) && !isNaN(th) && pinOk(k, pn)) {
-                kinds[n - 1] = k
-                pinNums[n - 1] = pn
-                thresholds[n - 1] = th
+            const items = raw.split(";")
+            for (let j = 0; j < items.length && j < 2; j++) {
+                const p = items[j].split(",")
+                if (p.length != 3) continue
+                const k = p[0]
+                const pn = parseFloat(p[1])
+                const th = parseFloat(p[2])
+                if (k != "off" && kindOk(k) && !isNaN(th) && pinOk(k, pn)) {
+                    const n = e * 2 + j + 1
+                    kinds[n - 1] = k
+                    pinNums[n - 1] = pn
+                    thresholds[n - 1] = th
+                }
             }
         }
     }
 
+    function item(n: number): string {
+        if (kinds[n - 1] == "off") return "off"
+        return kinds[n - 1] + "," + pinNums[n - 1] + "," + thresholds[n - 1]
+    }
+
     function save(n: number) {
-        nodestore.putRaw("ch" + n, kinds[n - 1] + "," + pinNums[n - 1] + "," + thresholds[n - 1])
+        const e = Math.idiv(n - 1, 2)
+        const first = e * 2 + 1
+        const key = e == 0 ? "m.a" : "m.b"
+        if (kinds[first - 1] == "off" && kinds[first] == "off") {
+            nodestore.removeRaw(key)
+        } else {
+            nodestore.putRaw(key, item(first) + ";" + item(first + 1))
+        }
     }
 
     function valid(n: number): boolean {
@@ -203,11 +220,13 @@ namespace channel {
             save(n)
             return "OK ch" + n + "=off"
         }
-        if (!kindOk(k)) return "ERR kind must be 1-8 characters, no spaces or commas"
+        if (!kindOk(k)) return "ERR kind must be 1-7 characters, no spaces or commas"
         if (!pinOk(k, pin)) return "ERR pin " + pin + " not valid for " + k
+        const th = isNaN(threshold) ? 0 : Math.round(threshold)
+        if (th < 0 || th > 9999) return "ERR threshold must be 0-9999"
         kinds[n - 1] = k
         pinNums[n - 1] = pin
-        thresholds[n - 1] = isNaN(threshold) ? 0 : threshold
+        thresholds[n - 1] = th
         save(n)
         return "OK ch" + n + "=" + describe(n)
     }
@@ -218,9 +237,9 @@ namespace channel {
     //% group="Setup" weight=49
     export function setQuietSeconds(seconds: number): string {
         ensureLoaded()
-        if (isNaN(seconds) || seconds < 0) return "ERR quiet must be a number of seconds, 0 or more"
-        quiet = seconds
-        nodestore.putRaw("quiet", "" + seconds)
+        if (isNaN(seconds) || seconds < 0 || seconds > 9999) return "ERR quiet must be 0-9999 seconds"
+        quiet = Math.round(seconds)
+        nodestore.putQuiet(quiet)
         return "OK quiet=" + quiet
     }
 
