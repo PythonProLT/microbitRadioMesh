@@ -1,11 +1,11 @@
 {
     "name": "radio-mesh",
-    "version": "0.4.0",
-    "description": "Named micro:bits that relay each other's radio messages, with sensor channels and settings saved to flash (micro:bit V2)",
+    "version": "0.5.0",
+    "description": "Named micro:bits that relay each other's radio messages, with sensor channels and settings saved to flash",
     "dependencies": {
         "core": "*",
         "radio": "*",
-        "datalogger": "*"
+        "REPLACE-WITH-THE-FLASHSTORAGE-DEPENDENCY-NAME": "REPLACE-WITH-ITS-github:OWNER/REPO#VERSION-VALUE"
     },
     "files": [
         "README.md",
