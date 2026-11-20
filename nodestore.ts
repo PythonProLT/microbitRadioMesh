@@ -1,41 +1,71 @@
 /**
  * Saved data: a small key/value store that survives power loss.
- * It uses MakeCode's `settings` library (the same flash storage the datalogger
- * extension uses), so it needs a micro:bit V2.
  *
- * Internal keys (node name, channel setup) and your own saved variables share
- * the same store; your variables are kept apart by a prefix.
+ * It sits on top of a separate flash storage extension (a dependency listed in
+ * pxt.json) and uses only four of its functions: put, remove, getOrDefault
+ * and (for existence checks) getOrDefault with a marker value.
+ *
+ * Flash entries are scarce, so the node name and quiet time share one entry
+ * ("m.n"), the four sensor channels share two ("m.a", "m.b"), and your own
+ * variables use one entry each plus one index entry ("m.vk").
  */
 //% color="#6C757D" weight=60 icon="" block="Saved data"
 namespace nodestore {
-    const PREFIX = "mn."
+    const NONE = "~~none~~"
+    const K_ID = "m.n"
     const USER = "v."
-    const USER_INDEX = "vk"
+    const USER_INDEX = "m.vk"
+    const VAR_MAX = 12
 
     // ----- raw access (used by the other files; not shown as blocks) -----
 
     /** Write a value, skipping the write if it is already stored (saves flash wear). */
     export function putRaw(key: string, value: string) {
-        const k = PREFIX + key
-        if (settings.exists(k) && settings.readString(k) == value) return
-        settings.writeString(k, value)
+        if (flashstorage.getOrDefault(key, NONE) == value) return
+        flashstorage.put(key, value)
     }
 
     /** Read a value, or the fallback if nothing is stored. */
     export function getRaw(key: string, fallback: string): string {
-        const k = PREFIX + key
-        if (!settings.exists(k)) return fallback
-        const v = settings.readString(k)
-        if (v === undefined || v === null) return fallback
-        return v
+        return flashstorage.getOrDefault(key, fallback)
     }
 
     export function hasRaw(key: string): boolean {
-        return settings.exists(PREFIX + key)
+        return flashstorage.getOrDefault(key, NONE) != NONE
     }
 
     export function removeRaw(key: string) {
-        settings.remove(PREFIX + key)
+        if (hasRaw(key)) flashstorage.remove(key)
+    }
+
+    // ----- node name and quiet time share one entry: "<name>,<quiet seconds>" -----
+
+    function idParts(): string[] {
+        const p = getRaw(K_ID, "").split(",")
+        while (p.length < 2) p.push("")
+        return p
+    }
+
+    export function hasName(): boolean {
+        return idParts()[0] != ""
+    }
+
+    export function getName(fallback: string): string {
+        const n = idParts()[0]
+        return n == "" ? fallback : n
+    }
+
+    export function putName(name: string) {
+        putRaw(K_ID, name + "," + idParts()[1])
+    }
+
+    export function getQuiet(fallback: number): number {
+        const q = parseFloat(idParts()[1])
+        return isNaN(q) ? fallback : q
+    }
+
+    export function putQuiet(seconds: number) {
+        putRaw(K_ID, idParts()[0] + "," + seconds)
     }
 
     // ----- your own variables -----
@@ -47,7 +77,7 @@ namespace nodestore {
             if (c == "," || c == "=" || c == " " || c == "|" || c == "\r" || c == "\n") continue
             out += c
         }
-        return out
+        return out.substr(0, VAR_MAX)
     }
 
     function varNames(): string[] {
@@ -56,7 +86,7 @@ namespace nodestore {
         return raw.split(",")
     }
 
-    /** Save a text value under a short name. Survives power loss. */
+    /** Save a text value under a short name (up to 12 characters). Survives power loss. */
     //% block="save text %key = %value"
     //% weight=60
     export function saveText(key: string, value: string) {
