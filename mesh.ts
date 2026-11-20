@@ -74,17 +74,17 @@ namespace mesh {
     }
 
     function nameOk(n: string): boolean {
-        return n.length > 0 && n.length <= NAME_MAX && n != "*"
+        return n.length > 0 && n.length <= NAME_MAX && n != "*" && n.indexOf(",") < 0
     }
 
     // ----------------------------- node name -----------------------------
 
-    /** Change this node's name and save it. Returns false if the name isn't allowed (1-12 characters, not "*"). */
+    /** Change this node's name and save it. Returns false if the name isn't allowed (1-12 characters, no comma or |, not "*"). */
     export function rename(name: string): boolean {
         const n = cleanName(name)
         if (!nameOk(n)) return false
         nodeName = n
-        nodestore.putRaw("name", n)
+        nodestore.putName(n)
         return true
     }
 
@@ -99,7 +99,7 @@ namespace mesh {
     //% block="default mesh name %name"
     //% group="Node" weight=81
     export function defaultName(name: string) {
-        if (!nodestore.hasRaw("name")) {
+        if (!nodestore.hasName()) {
             const n = cleanName(name)
             if (nameOk(n)) nodeName = n
         }
@@ -141,7 +141,7 @@ namespace mesh {
     export function start(group: number) {
         radio.setGroup(group)
         radio.setTransmitPower(7)
-        nodeName = nodestore.getRaw("name", nodeName)
+        nodeName = nodestore.getName(nodeName)
         msgCounter = randint(0, 1295)
         if (!started) {
             started = true
