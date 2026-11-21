@@ -49,7 +49,9 @@ The name is saved. From now on `mesh.send("alice", ...)` reaches it, from anywhe
 
 A message is `to|payload|from`. The radio can only send 19 characters at a time, so each message is cut into fragments, sent, and put back together at the other end. Payloads can be roughly 80 characters minus the two names.
 
-Every node that hears a fragment for the first time repeats it after a short random delay, up to a hop limit (default 4, `mesh.setMaxHops` up to 9). A node acts on a message only if the `to` name is its own name or `*`.
+Each fragment also carries a short trail of one-character tags (made from node names), one per node that has sent or relayed it. A node that finds its own tag in the trail ignores the fragment, so messages never loop back through the same node. Two names can occasionally share a tag; if a node can't hear a neighbour it should, rename one of them.
+
+Every node that hears a fragment for the first time repeats it after a short random delay, up to a hop limit (default 4, `mesh.setMaxHops` up to 4). A node acts on a message only if the `to` name is its own name or `*`.
 
 Things to know:
 
