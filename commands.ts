@@ -8,6 +8,9 @@
  *   SET quiet 10                         seconds between reports per channel (saved)
  *   SET ch1 sonar 2 500                  channel 1: kind, pin, threshold (saved)
  *   SET ch2 off                          switch channel 2 off
+ *   PAIR sonar                           find a sonar on a free pin and save it in the first free channel
+ *                                        (also: pir, digital, mic, analog; "PAIR a sonar" works too; takes up to 8 s)
+ *   UNPAIR 2                             switch channel 2 off
  *   SET <variable> <value>               save your own text variable
  *   GET <name|quiet|chN|variable>        read a setting or variable
  *   DEL <variable>   KEYS   FORGET       delete one / list / delete all variables
@@ -133,6 +136,17 @@ namespace commands {
         if (verb == "DEL") {
             nodestore.deleteSaved(word(2, c))
             return "OK DEL " + word(2, c)
+        }
+        if (verb == "PAIR") {
+            let what = word(2, c)
+            if (what.toLowerCase() == "a" || what.toLowerCase() == "an") what = word(3, c)
+            if (what.length == 0) return "ERR usage: PAIR <sonar|pir|digital|mic|analog>"
+            return channel.pair(what)
+        }
+        if (verb == "UNPAIR") {
+            const n = parseFloat(word(2, c))
+            if (isNaN(n)) return "ERR usage: UNPAIR <channel 1-4>"
+            return channel.configure(n, "off", 0, 0)
         }
         if (verb == "KEYS") return "KEYS " + nodestore.savedNames()
         if (verb == "FORGET") {
