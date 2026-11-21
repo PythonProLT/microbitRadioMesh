@@ -60,6 +60,16 @@ namespace sensornode {
             mesh.hearOnly(commands.textAfter(1, payload))
             return "OK hearing only " + commands.textAfter(1, payload)
         }
+        if (verb == "SPEAK") {
+            const w1 = commands.word(2, payload)
+            if (w1.length == 0) return "ERR usage: SPEAK <up to 3 names> or SPEAK ALL"
+            if (w1.toUpperCase() == "ALL") {
+                mesh.speakAll()
+                return "OK speaking to everyone"
+            }
+            mesh.speakOnly(commands.textAfter(1, payload))
+            return "OK speaking only to " + commands.textAfter(1, payload)
+        }
         if (verb == "LEAVE") {
             const sec = parseFloat(commands.word(2, payload))
             if (!(sec >= 1 && sec <= 3600)) return "ERR usage: LEAVE <seconds 1-3600>"
@@ -72,7 +82,7 @@ namespace sensornode {
             const us = channel.sonarEchoUs(p)
             return "p" + p + " echo_us=" + us + " mm=" + channel.mmFromEcho(us)
         }
-        if (verb == "HELP") return "PING STATUS STATS HEAR READ n SONAR n LEAVE s TIME DATE CFG SET PAIR UNPAIR"
+        if (verb == "HELP") return "PING STATUS STATS HEAR SPEAK READ n SONAR n LEAVE s TIME DATE CFG SET PAIR UNPAIR"
         if (commandHandler) {
             replyText = ""
             commandHandler(verb, payload)

@@ -147,10 +147,11 @@ Every node that hears a fragment for the first time queues it for repeating afte
 ```
 @north2 HEAR north1      north2 only accepts packets sent by north1
 HEAR north1              the main node itself only accepts packets sent by north1
-HEAR ALL                 undo (resets on restart too)
+@north1 SPEAK north2     north1 only sends to north2 (up to 3 names; other nodes ignore its packets)
+HEAR ALL / SPEAK ALL     undo (both reset on restart too)
 ```
 
-Then `@north2 PING` must go main > north1 > north2, and the reply shows `hops=2 via main>...`. `@name STATS` shows `heard dup blocked rel done lost`: `lost` above 0 means a message never got all its fragments.
+`HEAR` limits who a node accepts packets from; `SPEAK` limits who its packets are for (radio is broadcast, so each packet is marked for one neighbour and sent once per name). Use both for a fixed route. Then `@north2 PING` must go main > north1 > north2, and the reply shows `hops=2 via main>...`. `@name STATS` shows `heard dup blocked rel done lost`: `lost` above 0 means a message never got all its fragments.
 
 Things to know:
 

@@ -3,7 +3,7 @@
  *
  * A message is  <to-name>|<payload>|<from-name>.  Over the air it is cut into
  * fragments of at most 19 characters:
- *     [hops][id x2][index][total][trail x5][data x9]
+ *     [hops][id x2][index][total][for x1][trail x5][data x8]
  * The trail is the path the fragment has taken: each node that sends or relays
  * it writes its one-character tag (made from its name) into the next free spot
  * ("." = free). A node that finds its own tag already in the trail knows the
@@ -20,10 +20,10 @@
 //% color="#2E86C1" weight=90 icon="" block="Mesh"
 namespace mesh {
     const DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
-    const HEADER = 5
+    const HEADER = 6
     const TRAIL = 5
     const CHUNK = 19 - HEADER - TRAIL
-    const MAX_FRAGS = 9
+    const MAX_FRAGS = 10
     const SEEN_MAX = 60
     const PENDING_MAX = 6
     const NAME_MAX = 12
@@ -57,6 +57,7 @@ namespace mesh {
     let relayed = 0
     let repeats = 2
     let allowed = ""
+    let speakTags = ""
     let nHeard = 0
     let nDup = 0
     let nBlocked = 0
@@ -258,6 +259,35 @@ namespace mesh {
         allowed = tags
     }
 
+    /**
+     * Only send to these nodes (up to 3 names, separated by spaces): every packet this node sends or relays
+     * is marked for one of them, and the other nodes ignore it. Together with "hear only" this makes a fixed
+     * route. Not saved: it resets when the micro:bit restarts.
+     */
+    //% block="mesh speak only to %names"
+    //% group="Node" weight=57
+    export function speakOnly(names: string) {
+        let tags = ""
+        let word = ""
+        for (let i = 0; i <= names.length; i++) {
+            const c = i < names.length ? names.charAt(i) : " "
+            if (c == " " || c == ",") {
+                if (word.length > 0 && tags.length < 3 && tags.indexOf(tagOf(word)) < 0) tags += tagOf(word)
+                word = ""
+            } else {
+                word += c
+            }
+        }
+        speakTags = tags
+    }
+
+    /** Send to everyone again (undo "mesh speak only"). */
+    //% block="mesh speak to everyone"
+    //% group="Node" weight=56
+    export function speakAll() {
+        speakTags = ""
+    }
+
     /** Hear every node again (undo "mesh hear only"). */
     //% block="mesh hear everyone"
     //% group="Node" weight=59
@@ -335,8 +365,13 @@ namespace mesh {
         for (let r = 0; r < repeats; r++) {
             for (let i = 0; i < total; i++) {
                 const key = id + DIGITS.charAt(i) + DIGITS.charAt(total)
-                radio.sendString(DIGITS.charAt(maxHops) + key + trail + logical.substr(i * CHUNK, CHUNK))
-                basic.pause(20)
+                const core = DIGITS.charAt(maxHops) + key
+                const rest = trail + logical.substr(i * CHUNK, CHUNK)
+                const copies = speakTags.length == 0 ? 1 : speakTags.length
+                for (let c = 0; c < copies; c++) {
+                    radio.sendString(core + (speakTags.length == 0 ? "." : speakTags.charAt(c)) + rest)
+                    basic.pause(20)
+                }
             }
             if (r < repeats - 1) basic.pause(randint(40, 120))
         }
@@ -361,6 +396,12 @@ namespace mesh {
         const idx = DIGITS.indexOf(frag.charAt(3))
         const total = DIGITS.indexOf(frag.charAt(4))
         if (hops < 0 || idx < 0 || total < 1 || idx >= total) return
+        // this copy is meant for one particular neighbour (see "mesh speak only"): ignore it if that is not me
+        const forTag = frag.charAt(5)
+        if (forTag != "." && forTag != tagOf(nodeName)) {
+            nBlocked++
+            return
+        }
         const trail = frag.substr(HEADER, TRAIL)
         const free = trail.indexOf(".")
         // "hear only" filter: accept only fragments whose last transmitter is on the list
@@ -379,11 +420,16 @@ namespace mesh {
         if (hops > 0 && free >= 0) {
             const me = tagOf(nodeName)
             const newTrail = trail.substr(0, free) + me + trail.substr(free + 1)
-            const out = DIGITS.charAt(hops - 1) + key + newTrail + frag.substr(HEADER + TRAIL)
+            const core = DIGITS.charAt(hops - 1) + key
+            const rest = newTrail + frag.substr(HEADER + TRAIL)
             // do not wait inside this handler (it would make the radio drop the next packets):
             // queue the relay, the background loop sends it after a random delay
-            queueTx(out, randint(5, 40))
-            if (repeats > 1) queueTx(out, randint(60, 160))
+            const copies = speakTags.length == 0 ? 1 : speakTags.length
+            for (let c = 0; c < copies; c++) {
+                const out = core + (speakTags.length == 0 ? "." : speakTags.charAt(c)) + rest
+                queueTx(out, randint(5, 40))
+                if (repeats > 1) queueTx(out, randint(60, 160))
+            }
             relayed++
         }
         collect(id, idx, total, frag.substr(HEADER + TRAIL), trail)

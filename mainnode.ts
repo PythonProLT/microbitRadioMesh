@@ -17,7 +17,8 @@
  *   LEAVE 60 | JOIN         the same for this main node, or rejoin early
  *   @north1 STATS           packet counters of north1 (lost > 0 means missing fragments)
  *   @north2 HEAR north1     north2 only accepts packets sent by north1, which forces the route through it
- *   HEAR ALL                undo (also works as @name HEAR ALL; HEAR on main limits main itself)
+ *   @north1 SPEAK north2    north1 only sends to north2 (up to 3 names; others ignore its packets)
+ *   HEAR ALL / SPEAK ALL    undo (also works as @name HEAR ALL; HEAR on main limits main itself)
  *   HOPS OFF | HOPS ON      hide or show the hops line printed under every report
  *   HELP                    show this list
  * Every line you type is echoed back as  > <line>  and then answered, so you can see what the
@@ -85,6 +86,17 @@ namespace mainnode {
             } else {
                 mesh.hearOnly(commands.textAfter(1, line))
                 serial.writeLine("OK main hears only " + commands.textAfter(1, line))
+            }
+        } else if (verb == "SPEAK") {
+            const w1 = commands.word(2, line)
+            if (w1.length == 0) {
+                serial.writeLine("usage: SPEAK <up to 3 names>  or  SPEAK ALL   (or @name SPEAK ...)")
+            } else if (w1.toUpperCase() == "ALL") {
+                mesh.speakAll()
+                serial.writeLine("OK main speaks to everyone")
+            } else {
+                mesh.speakOnly(commands.textAfter(1, line))
+                serial.writeLine("OK main speaks only to " + commands.textAfter(1, line))
             }
         } else if (verb == "JOIN") {
             mesh.rejoin()
