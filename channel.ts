@@ -314,14 +314,14 @@ namespace channel {
     }
 
     /**
-     * Distance in millimetres from a 3-wire Sonar:bit style ultrasonic sensor on one pin.
-     * Returns 0 when nothing is heard. Works from about 40 to 4000 mm.
+     * Distance in millimetres from a 3-wire Sonar:bit on one pin, read with the ElecFreaks sonarbit
+     * extension (installed automatically with this one). Returns 0 when nothing is heard. Works from about 40 to 4000 mm.
      */
     //% block="sonar distance (mm) on pin %pin"
     //% pin.min=0 pin.max=16 pin.defl=2
     //% group="Readings" weight=36
     export function sonarMm(pin: number): number {
-        return mmFromEcho(sonarEchoUs(pin))
+        return sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
     }
 
     function readKind(k: string, p: number): number {

@@ -1,11 +1,12 @@
 {
     "name": "radio-mesh",
-    "version": "0.7.0",
+    "version": "0.7.1",
     "description": "Named micro:bits that relay each other's radio messages. One block each turns a micro:bit into a sensor node or the main node.",
     "dependencies": {
         "core": "*",
         "radio": "*",
-        "flashstorage": "github:bsiever/microbit-pxt-flashstorage#master"
+        "flashstorage": "github:bsiever/microbit-pxt-flashstorage#master",
+        "sonarbit": "github:elecfreaks/pxt-sonarbit#master"
     },
     "files": [
         "README.md",

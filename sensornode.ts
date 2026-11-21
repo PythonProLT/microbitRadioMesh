@@ -80,7 +80,8 @@ namespace sensornode {
             const p = parseFloat(commands.word(2, payload))
             if (!(p >= 0 && p <= 16)) return "ERR usage: SONAR <pin 0-16>"
             const us = channel.sonarEchoUs(p)
-            return "p" + p + " echo_us=" + us + " mm=" + channel.mmFromEcho(us)
+            // two independent readings: our own pulse (echo_us) and the sonarbit extension (mm)
+            return "p" + p + " echo_us=" + us + " sonarbit_mm=" + channel.sonarMm(p)
         }
         if (verb == "HELP") return "PING STATUS STATS HEAR SPEAK READ n SONAR n LEAVE s TIME DATE CFG SET PAIR UNPAIR"
         if (commandHandler) {
