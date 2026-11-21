@@ -6,10 +6,24 @@
 #   @north1 STATUS          send "STATUS" to the node named north1 (any command works, incl. SET / CFG)
 #   @north1 SET ch2 mic 0 300
 #   @* CFG                  send to every node
+#   @north1 LOGCLEAR        empty that node's datalogger
+#   pair a sonar on north1  find a sonar on a free pin of north1 and save it in its first free channel
+#                           (kinds: sonar, pir, digital, mic, analog; takes up to 8 s, so trigger the
+#                           sensor meanwhile. Same as "@north1 PAIR sonar". "@north1 UNPAIR 2" frees channel 2.)
+#   LOGCLEAR                empty this (main) micro:bit's datalogger
 #   TIME 12 34 56           set this node's clock and every node's clock
 #   DATE 11 20 2026         set this node's date and every node's date (month day year)
 #   SET name main / CFG / GET key / KEYS      configure this micro:bit itself
 # Replies and reports print as:  north1> <text>
+
+def reset_log():
+    datalogger.delete_log(datalogger.DeleteType.FAST)
+    datalogger.set_column_titles("timestamp", "sensor", "channel", "kind", "value")
+
+def on_log_full():
+    reset_log()
+    serial.write_line("NOTE log was full and has been cleared")
+datalogger.on_log_full(on_log_full)
 
 def on_data_received():
     global pending
@@ -31,6 +45,8 @@ mesh.on_message(on_mesh_message)
 
 stamp = ""
 target = ""
+kindWord = ""
+wordNo = 0
 verb = ""
 line = ""
 pending = ""
@@ -39,7 +55,7 @@ mesh.default_name("main")
 mesh.start(1)
 
 def on_forever():
-    global pending, line, verb, target
+    global pending, line, verb, target, kindWord, wordNo
     if pending != "":
         line = pending
         pending = ""
@@ -48,6 +64,21 @@ def on_forever():
             target = verb.substr(1, len(verb) - 1)
             mesh.send(target, commands.text_after(1, line))
             serial.write_line("SENT " + target)
+        elif verb == "PAIR" or verb == "pair":
+            kindWord = commands.word(2, line)
+            wordNo = 3
+            if kindWord == "a" or kindWord == "an":
+                kindWord = commands.word(3, line)
+                wordNo = 4
+            if kindWord != "" and (commands.word(wordNo, line) == "on" or commands.word(wordNo, line) == "ON"):
+                target = commands.word(wordNo + 1, line)
+                mesh.send(target, "PAIR " + kindWord)
+                serial.write_line("SENT PAIR " + kindWord + " to " + target)
+            else:
+                serial.write_line("usage: pair a sonar on north1")
+        elif verb == "LOGCLEAR":
+            reset_log()
+            serial.write_line("OK log cleared")
         elif verb == "TIME":
             timeanddate.set24_hour_time(int(commands.word(2, line)), int(commands.word(3, line)), int(commands.word(4, line)))
             mesh.send("*", line)
