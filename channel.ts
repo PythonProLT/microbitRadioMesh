@@ -350,18 +350,29 @@ namespace channel {
     }
 
     function pairSonar(ch: number): string {
+        let inUse = ""
+        let heard = ""
         for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
             const p = DIGITAL_CANDIDATES[i]
-            if (pinInUse(p)) continue
+            if (pinInUse(p)) {
+                inUse += (inUse == "" ? "" : ",") + p
+                continue
+            }
             let good = 0
+            let best = 0
             for (let j = 0; j < 3; j++) {
                 const d = readKind("sonar", p)
                 if (d >= 20 && d <= 4000) good++
+                if (d > best) best = d
                 basic.pause(60)
             }
             if (good >= 2) return configure(ch, "sonar", p, 500)
+            if (best > 0 && heard == "") heard = "p" + p + "=" + best
         }
-        return "ERR no sonar found on a free pin"
+        let msg = "ERR no sonar found"
+        if (inUse != "") msg += ", pin in use: " + inUse
+        msg += heard != "" ? ", odd echo " + heard : ", no echo on free pins"
+        return msg
     }
 
     function pairDigital(ch: number, k: string): string {
