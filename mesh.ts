@@ -2,10 +2,18 @@
  * Radio mesh: named micro:bits that relay each other's messages.
  *
  * A message is  <to-name>|<payload>|<from-name>.  Over the air it is cut into
- * fragments of at most 19 characters:   [hops][id x2][index][total][data...]
- * Every node relays every new fragment (flooding: remembers what it has seen,
- * stops after a hop limit, waits a short random time first) and reassembles
- * messages. A node only delivers a message whose to-name is its own name or "*".
+ * fragments of at most 19 characters:
+ *     [hops][id x2][index][total][trail x5][data x9]
+ * The trail is the path the fragment has taken: each node that sends or relays
+ * it writes its one-character tag (made from its name) into the next free spot
+ * ("." = free). A node that finds its own tag already in the trail knows the
+ * fragment has been through it before and ignores it. Every node also remembers
+ * recent fragments, stops after a hop limit, and waits a short random time
+ * before relaying. A node only delivers a message whose to-name is its own
+ * name or "*".
+ *
+ * Tags are one character (36 possibilities), so two differently named nodes can
+ * share a tag. If a node never hears a neighbour, rename one of them.
  *
  * There is no routing table, no acknowledgement and no security.
  */
@@ -13,8 +21,9 @@
 namespace mesh {
     const DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
     const HEADER = 5
-    const CHUNK = 19 - HEADER
-    const MAX_FRAGS = 6
+    const TRAIL = 5
+    const CHUNK = 19 - HEADER - TRAIL
+    const MAX_FRAGS = 9
     const SEEN_MAX = 40
     const PENDING_MAX = 6
     const NAME_MAX = 12
@@ -77,6 +86,15 @@ namespace mesh {
         return n.length > 0 && n.length <= NAME_MAX && n != "*" && n.indexOf(",") < 0
     }
 
+    /** One-character tag for a name (0-9, a-z). Same name always gives the same tag. */
+    function tagOf(name: string): string {
+        let h = 0
+        for (let i = 0; i < name.length; i++) {
+            h = (h * 31 + name.charCodeAt(i)) % 36
+        }
+        return DIGITS.charAt(h)
+    }
+
     // ----------------------------- node name -----------------------------
 
     /** Change this node's name and save it. Returns false if the name isn't allowed (1-12 characters, no comma or |, not "*"). */
@@ -112,12 +130,12 @@ namespace mesh {
         return nodeName
     }
 
-    /** How many relay hops a message may take (0-9). Default 4. */
+    /** How many relay hops a message may take (0-4, limited by the 5-spot trail). Default 4. */
     //% block="set mesh max hops %hops"
-    //% hops.min=0 hops.max=9 hops.defl=4
+    //% hops.min=0 hops.max=4 hops.defl=4
     //% group="Node" weight=70
     export function setMaxHops(hops: number) {
-        maxHops = Math.max(0, Math.min(9, Math.floor(hops)))
+        maxHops = Math.max(0, Math.min(TRAIL - 1, Math.floor(hops)))
     }
 
     /** Signal strength (dBm, negative) of the last radio packet this node heard. */
@@ -168,13 +186,15 @@ namespace mesh {
         if (room < 0) return
         const body = strip(payload).substr(0, room)
         const logical = target + "|" + body + "|" + me
+        let trail = tagOf(me)
+        while (trail.length < TRAIL) trail += "."
         const total = Math.idiv(logical.length + CHUNK - 1, CHUNK)
         msgCounter = (msgCounter + 1) % 1296
         const id = DIGITS.charAt(Math.idiv(msgCounter, 36)) + DIGITS.charAt(msgCounter % 36)
         for (let i = 0; i < total; i++) {
-            const key = id + DIGITS.charAt(i) + DIGITS.charAt(total) + logical.substr(i * CHUNK, CHUNK)
+            const key = id + DIGITS.charAt(i) + DIGITS.charAt(total)
             remember(key)
-            radio.sendString(DIGITS.charAt(maxHops) + key)
+            radio.sendString(DIGITS.charAt(maxHops) + key + trail + logical.substr(i * CHUNK, CHUNK))
             basic.pause(20)
         }
     }
@@ -190,21 +210,27 @@ namespace mesh {
 
     function onPacket(frag: string) {
         lastSig = radio.receivedPacket(RadioPacketProperty.SignalStrength)
-        if (frag.length < HEADER + 1) return
-        const key = frag.substr(1)
-        if (seen.indexOf(key) >= 0) return
-        remember(key)
+        if (frag.length < HEADER + TRAIL + 1) return
         const hops = DIGITS.indexOf(frag.charAt(0))
         const id = frag.substr(1, 2)
         const idx = DIGITS.indexOf(frag.charAt(3))
         const total = DIGITS.indexOf(frag.charAt(4))
         if (hops < 0 || idx < 0 || total < 1 || idx >= total) return
-        if (hops > 0) {
+        const trail = frag.substr(HEADER, TRAIL)
+        const me = tagOf(nodeName)
+        // my tag is already in the path: this fragment has been through me, ignore it
+        if (trail.indexOf(me) >= 0) return
+        const key = frag.substr(1, 4)
+        if (seen.indexOf(key) >= 0) return
+        remember(key)
+        const free = trail.indexOf(".")
+        if (hops > 0 && free >= 0) {
+            const newTrail = trail.substr(0, free) + me + trail.substr(free + 1)
             basic.pause(randint(5, 40))
-            radio.sendString(DIGITS.charAt(hops - 1) + key)
+            radio.sendString(DIGITS.charAt(hops - 1) + key + newTrail + frag.substr(HEADER + TRAIL))
             relayed++
         }
-        collect(id, idx, total, frag.substr(HEADER))
+        collect(id, idx, total, frag.substr(HEADER + TRAIL))
     }
 
     function collect(id: string, idx: number, total: number, data: string) {
