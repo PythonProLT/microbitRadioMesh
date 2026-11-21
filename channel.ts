@@ -7,9 +7,13 @@
  *   pir, digital   digital pin; detection when it reads 1
  *   mic, analog    analog pin (0-4, 10); "mic" measures peak-to-peak over 50 ms;
  *                  detection when the value is ABOVE the threshold
- * Any other kind (for example "sonar") is yours to read in your own program
- * with channel.pin(n); for the kind "sonar" a detection is a reading above 0
- * and BELOW the threshold, for any other custom kind ABOVE the threshold.
+ * Any other kind (for example "sonar") is read by YOUR program: put a
+ * "when a channel reads a custom kind" block in it, and inside it hand back the
+ * reading with "set reading to". For the kind "sonar" a detection is a reading
+ * above 0 and BELOW the threshold, for any other custom kind ABOVE the threshold.
+ *
+ * channel.pair("sonar") (also pir, digital, mic, analog) looks for a sensor of
+ * that kind on a pin no channel uses yet, and saves it in the first free channel.
  */
 //% color="#E67E22" weight=80 icon="" block="Channels"
 namespace channel {
@@ -263,17 +267,39 @@ namespace channel {
         return hi - lo
     }
 
-    /** Read a channel. Works for the built-in kinds; for other kinds it returns 0 (read those yourself with the channel's pin). */
+    let customHandler: (kind: string, pin: number) => void = null
+    let customValue = 0
+
+    /** Teach channels to read a kind this extension can't read itself (for example "sonar"). Inside, use "set reading to". */
+    //% block="when a channel reads a custom kind"
+    //% draggableParameters="reporter"
+    //% group="Readings" weight=38
+    export function onCustomRead(handler: (kind: string, pin: number) => void) {
+        customHandler = handler
+    }
+
+    /** Use inside "when a channel reads a custom kind" to hand back the reading. */
+    //% block="set reading to %value"
+    //% group="Readings" weight=37
+    export function setReading(value: number) {
+        customValue = value
+    }
+
+    function readKind(k: string, p: number): number {
+        if (k == "mic") return analogPeak(p, 50)
+        if (k == "analog") return pins.analogReadPin(analogPin(p))
+        if (k == "digital" || k == "pir") return pins.digitalReadPin(digitalPin(p))
+        customValue = 0
+        if (customHandler) customHandler(k, p)
+        return customValue
+    }
+
+    /** Read a channel. Built-in kinds are read for you; other kinds (like sonar) use "when a channel reads a custom kind". */
     //% block="read channel %n"
     //% n.min=1 n.max=4 n.defl=1
     //% group="Readings" weight=41
     export function read(n: number): number {
-        const k = kind(n)
-        const p = pin(n)
-        if (k == "mic") return analogPeak(p, 50)
-        if (k == "analog") return pins.analogReadPin(analogPin(p))
-        if (k == "digital" || k == "pir") return pins.digitalReadPin(digitalPin(p))
-        return 0
+        return readKind(kind(n), pin(n))
     }
 
     /** True if a reading counts as a detection for this channel's kind and threshold. */
@@ -286,5 +312,114 @@ namespace channel {
         if (k == "pir" || k == "digital") return value > 0
         if (k == "sonar") return value > 0 && value < threshold(n)
         return value > threshold(n)
+    }
+
+    // ----------------------------- pairing -----------------------------
+
+    const SCAN_MS = 8000
+    // pins that are free to use: not the LED screen (3 4 6 7 9 10), buttons (5 11) or I2C (19 20)
+    const DIGITAL_CANDIDATES = [0, 1, 2, 8, 12, 13, 14, 15, 16]
+    const ANALOG_CANDIDATES = [0, 1, 2]
+
+    function pinInUse(p: number): boolean {
+        for (let n = 1; n <= MAX; n++) {
+            if (kinds[n - 1] != "off" && pinNums[n - 1] == p) return true
+        }
+        return false
+    }
+
+    function pairSonar(ch: number): string {
+        if (!customHandler) return "ERR no sonar reader: add 'when a channel reads a custom kind'"
+        for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
+            const p = DIGITAL_CANDIDATES[i]
+            if (pinInUse(p)) continue
+            let good = 0
+            for (let j = 0; j < 3; j++) {
+                const d = readKind("sonar", p)
+                if (d >= 20 && d <= 4000) good++
+                basic.pause(60)
+            }
+            if (good >= 2) return configure(ch, "sonar", p, 500)
+        }
+        return "ERR no sonar found on a free pin"
+    }
+
+    function pairDigital(ch: number, k: string): string {
+        for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
+            if (!pinInUse(DIGITAL_CANDIDATES[i])) pins.setPull(digitalPin(DIGITAL_CANDIDATES[i]), PinPullMode.PullDown)
+        }
+        let found = -1
+        const end = input.runningTime() + SCAN_MS
+        while (found < 0 && input.runningTime() < end) {
+            for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
+                const p = DIGITAL_CANDIDATES[i]
+                if (!pinInUse(p) && pins.digitalReadPin(digitalPin(p)) == 1) {
+                    found = p
+                    break
+                }
+            }
+            basic.pause(10)
+        }
+        for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
+            const p = DIGITAL_CANDIDATES[i]
+            if (!pinInUse(p) && p != found) pins.setPull(digitalPin(p), PinPullMode.PullNone)
+        }
+        if (found < 0) return "ERR no active " + k + " found in 8 s"
+        return configure(ch, k, found, 0)
+    }
+
+    function pairAnalog(ch: number, k: string): string {
+        const mins: number[] = []
+        const maxs: number[] = []
+        for (let i = 0; i < ANALOG_CANDIDATES.length; i++) {
+            mins.push(1023)
+            maxs.push(0)
+        }
+        const end = input.runningTime() + SCAN_MS
+        while (input.runningTime() < end) {
+            for (let i = 0; i < ANALOG_CANDIDATES.length; i++) {
+                const p = ANALOG_CANDIDATES[i]
+                if (pinInUse(p)) continue
+                const v = k == "mic" ? analogPeak(p, 20) : pins.analogReadPin(analogPin(p))
+                if (v < mins[i]) mins[i] = v
+                if (v > maxs[i]) maxs[i] = v
+            }
+            basic.pause(5)
+        }
+        let best = -1
+        let bestRange = 0
+        for (let i = 0; i < ANALOG_CANDIDATES.length; i++) {
+            if (pinInUse(ANALOG_CANDIDATES[i])) continue
+            const range = maxs[i] - mins[i]
+            // mic: quiet at some moment AND loud at another. analog: the value has to move.
+            const active = k == "mic" ? (mins[i] <= 60 && maxs[i] >= 150) : range >= 150
+            if (active && range > bestRange) {
+                best = i
+                bestRange = range
+            }
+        }
+        if (best < 0) return "ERR no active " + k + " found (make it change during the 8 s)"
+        return configure(ch, k, ANALOG_CANDIDATES[best], Math.round((mins[best] + maxs[best]) / 2))
+    }
+
+    /**
+     * Look for a sensor of this kind (sonar, pir, digital, mic or analog) on a pin no channel uses yet,
+     * and save it in the first free channel. Takes up to 8 seconds: trigger the sensor while it runs
+     * (move in front of a PIR, make a noise at a mic, turn a knob). Returns "OK ch2=sonar,2,500" or "ERR ...".
+     */
+    //% block="pair a %kind sensor"
+    //% group="Setup" weight=48
+    export function pair(kind: string): string {
+        ensureLoaded()
+        const k = kind.toLowerCase()
+        let ch = 0
+        for (let n = 1; n <= MAX && ch == 0; n++) {
+            if (kinds[n - 1] == "off") ch = n
+        }
+        if (ch == 0) return "ERR all " + MAX + " channels in use (SET chN off first)"
+        if (k == "sonar") return pairSonar(ch)
+        if (k == "pir" || k == "digital") return pairDigital(ch, k)
+        if (k == "mic" || k == "analog") return pairAnalog(ch, k)
+        return "ERR can't pair '" + k + "': try sonar, pir, digital, mic, analog"
     }
 }
