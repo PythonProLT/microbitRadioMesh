@@ -15,6 +15,9 @@
  *   SET name main / CFG     configure this micro:bit itself
  *   @north1 LEAVE 60        take north1 out of the mesh for 60 s (it rejoins by itself)
  *   LEAVE 60 | JOIN         the same for this main node, or rejoin early
+ *   @north1 STATS           packet counters of north1 (lost > 0 means missing fragments)
+ *   @north2 HEAR north1     north2 only accepts packets sent by north1, which forces the route through it
+ *   HEAR ALL                undo (also works as @name HEAR ALL; HEAR on main limits main itself)
  *   HOPS OFF | HOPS ON      hide or show the hops line printed under every report
  *   HELP                    show this list
  * Every line you type is echoed back as  > <line>  and then answered, so you can see what the
@@ -69,6 +72,19 @@ namespace mainnode {
             } else {
                 mesh.leave(sec)
                 serial.writeLine("OK main leaves the mesh for " + Math.floor(sec) + " s")
+            }
+        } else if (verb == "STATS") {
+            serial.writeLine(mesh.stats())
+        } else if (verb == "HEAR") {
+            const w1 = commands.word(2, line)
+            if (w1.length == 0) {
+                serial.writeLine("usage: HEAR <names>  or  HEAR ALL   (or @name HEAR ...)")
+            } else if (w1.toUpperCase() == "ALL") {
+                mesh.hearAll()
+                serial.writeLine("OK main hears everyone")
+            } else {
+                mesh.hearOnly(commands.textAfter(1, line))
+                serial.writeLine("OK main hears only " + commands.textAfter(1, line))
             }
         } else if (verb == "JOIN") {
             mesh.rejoin()

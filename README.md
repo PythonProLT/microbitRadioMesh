@@ -138,13 +138,23 @@ The name is saved. From now on `mesh.send("alice", ...)` reaches it, from anywhe
 
 A message is `to|payload|from`. The radio can only send 19 characters at a time, so each message is cut into fragments, sent, and put back together at the other end. Payloads can be roughly 80 characters minus the two names.
 
-Each fragment also carries a short trail of one-character tags (made from node names), one per node that has sent or relayed it. A node that finds its own tag in the trail ignores the fragment, so messages never loop back through the same node. Two names can occasionally share a tag; if a node can't hear a neighbour it should, rename one of them.
+Each fragment also carries a short trail of one-character tags (made from node names), one per node that has sent or relayed it. The trail is used to show the route (`PING`, the hops line). Loops are stopped by a list of fragments each node has already seen, not by the trail: with only 36 possible tags two nodes can share one, and a trail check would wrongly drop their messages.
 
-Every node that hears a fragment for the first time repeats it after a short random delay, up to a hop limit (default 4, `mesh.setMaxHops` up to 4). A node acts on a message only if the `to` name is its own name or `*`.
+Every node that hears a fragment for the first time queues it for repeating after a short random delay, up to a hop limit (default 4, `mesh.setMaxHops` up to 4). A node acts on a message only if the `to` name is its own name or `*`. Every packet is sent twice (`mesh send each packet n times`, 1-3), because a message only arrives if **all** its fragments do.
+
+**Why it seems to take the shortest route:** it is flooding. Every path is tried at once and the copy that arrives first is the one delivered, which is nearly always the shortest. If every node can hear every other, nothing ever needs a relay. To force a route, tell nodes who they may listen to:
+
+```
+@north2 HEAR north1      north2 only accepts packets sent by north1
+HEAR north1              the main node itself only accepts packets sent by north1
+HEAR ALL                 undo (resets on restart too)
+```
+
+Then `@north2 PING` must go main > north1 > north2, and the reply shows `hops=2 via main>...`. `@name STATS` shows `heard dup blocked rel done lost`: `lost` above 0 means a message never got all its fragments.
 
 Things to know:
 
-- There is **no acknowledgement or retry**. If a message is lost to a collision or weak signal it is simply gone.
+- There is **no acknowledgement**. Sending each packet twice makes loss much rarer but not impossible; if a command gets no reply, send it again.
 - There is **no security**. Anyone on the same radio group can send, and the sender name is only text. Use a different group number for separate networks.
 - Every node repeats everything, so a very chatty network will collide. Keep messages infrequent.
 - Names are 1-12 characters, cannot contain `|` or `,`, and cannot be `*`.

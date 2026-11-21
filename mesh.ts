@@ -24,7 +24,7 @@ namespace mesh {
     const TRAIL = 5
     const CHUNK = 19 - HEADER - TRAIL
     const MAX_FRAGS = 9
-    const SEEN_MAX = 40
+    const SEEN_MAX = 60
     const PENDING_MAX = 6
     const NAME_MAX = 12
 
@@ -55,6 +55,16 @@ namespace mesh {
     let started = false
     let lastSig = 0
     let relayed = 0
+    let repeats = 2
+    let allowed = ""
+    let nHeard = 0
+    let nDup = 0
+    let nBlocked = 0
+    let nDone = 0
+    let nLost = 0
+    let txQueue: string[] = []
+    let txDue: number[] = []
+    let pumping = false
     let seen: string[] = []
     let pending: Assembly[] = []
     let lastTrail = "."
@@ -218,6 +228,54 @@ namespace mesh {
         return out
     }
 
+    /** Send every packet this many times (1 to 3, default 2). Repeats make lost packets much rarer; duplicates are ignored by the receivers. */
+    //% block="mesh send each packet %times times"
+    //% times.min=1 times.max=3 times.defl=2
+    //% group="Node" weight=61
+    export function setRepeats(times: number) {
+        repeats = Math.max(1, Math.min(3, Math.floor(times)))
+    }
+
+    /**
+     * Only accept packets that were transmitted by one of these nodes (names separated by spaces). Use it to
+     * force a route when every node can hear every other: a node told to hear only "k" can only be reached through k.
+     * Not saved: it resets when the micro:bit restarts. The names are matched by their one-character tag.
+     */
+    //% block="mesh hear only %names"
+    //% group="Node" weight=60
+    export function hearOnly(names: string) {
+        let tags = ""
+        let word = ""
+        for (let i = 0; i <= names.length; i++) {
+            const c = i < names.length ? names.charAt(i) : " "
+            if (c == " " || c == ",") {
+                if (word.length > 0) tags += tagOf(word)
+                word = ""
+            } else {
+                word += c
+            }
+        }
+        allowed = tags
+    }
+
+    /** Hear every node again (undo "mesh hear only"). */
+    //% block="mesh hear everyone"
+    //% group="Node" weight=59
+    export function hearAll() {
+        allowed = ""
+    }
+
+    /**
+     * Counters since power-up: heard (every packet), new (not seen before) dup (copies ignored), blocked
+     * (refused by hear-only), relayed, done (messages fully assembled) and lost (messages that never completed).
+     * "lost" above 0 means fragments went missing.
+     */
+    //% block="mesh statistics"
+    //% group="Node" weight=58
+    export function stats(): string {
+        return "heard=" + nHeard + " dup=" + nDup + " blocked=" + nBlocked + " rel=" + relayed + " done=" + nDone + " lost=" + nLost
+    }
+
     /** How many fragments this node has relayed since power-up. */
     //% block="mesh fragments relayed"
     //% group="Node" weight=68
@@ -237,6 +295,15 @@ namespace mesh {
         if (!started) {
             started = true
             radio.onReceivedString(onPacket)
+        }
+        if (!pumping) {
+            pumping = true
+            control.inBackground(function () {
+                while (true) {
+                    pump()
+                    basic.pause(5)
+                }
+            })
         }
     }
 
@@ -264,11 +331,14 @@ namespace mesh {
         const total = Math.idiv(logical.length + CHUNK - 1, CHUNK)
         msgCounter = (msgCounter + 1) % 1296
         const id = DIGITS.charAt(Math.idiv(msgCounter, 36)) + DIGITS.charAt(msgCounter % 36)
-        for (let i = 0; i < total; i++) {
-            const key = id + DIGITS.charAt(i) + DIGITS.charAt(total)
-            remember(key)
-            radio.sendString(DIGITS.charAt(maxHops) + key + trail + logical.substr(i * CHUNK, CHUNK))
-            basic.pause(20)
+        for (let i = 0; i < total; i++) remember(id + DIGITS.charAt(i) + DIGITS.charAt(total))
+        for (let r = 0; r < repeats; r++) {
+            for (let i = 0; i < total; i++) {
+                const key = id + DIGITS.charAt(i) + DIGITS.charAt(total)
+                radio.sendString(DIGITS.charAt(maxHops) + key + trail + logical.substr(i * CHUNK, CHUNK))
+                basic.pause(20)
+            }
+            if (r < repeats - 1) basic.pause(randint(40, 120))
         }
     }
 
@@ -284,6 +354,7 @@ namespace mesh {
     function onPacket(frag: string) {
         if (isAway()) return          // excluded from the mesh: hear nothing, relay nothing
         lastSig = radio.receivedPacket(RadioPacketProperty.SignalStrength)
+        nHeard++
         if (frag.length < HEADER + TRAIL + 1) return
         const hops = DIGITS.indexOf(frag.charAt(0))
         const id = frag.substr(1, 2)
@@ -291,20 +362,55 @@ namespace mesh {
         const total = DIGITS.indexOf(frag.charAt(4))
         if (hops < 0 || idx < 0 || total < 1 || idx >= total) return
         const trail = frag.substr(HEADER, TRAIL)
-        const me = tagOf(nodeName)
-        // my tag is already in the path: this fragment has been through me, ignore it
-        if (trail.indexOf(me) >= 0) return
-        const key = frag.substr(1, 4)
-        if (seen.indexOf(key) >= 0) return
-        remember(key)
         const free = trail.indexOf(".")
+        // "hear only" filter: accept only fragments whose last transmitter is on the list
+        if (allowed.length > 0 && allowed.indexOf(trail.charAt(free < 0 ? TRAIL - 1 : free - 1)) < 0) {
+            nBlocked++
+            return
+        }
+        // Loops are stopped by the seen list, not by the trail: with only 36 one-character tags two nodes
+        // can share a tag, and a trail check would then wrongly throw their messages away.
+        const key = frag.substr(1, 4)
+        if (seen.indexOf(key) >= 0) {
+            nDup++
+            return
+        }
+        remember(key)
         if (hops > 0 && free >= 0) {
+            const me = tagOf(nodeName)
             const newTrail = trail.substr(0, free) + me + trail.substr(free + 1)
-            basic.pause(randint(5, 40))
-            radio.sendString(DIGITS.charAt(hops - 1) + key + newTrail + frag.substr(HEADER + TRAIL))
+            const out = DIGITS.charAt(hops - 1) + key + newTrail + frag.substr(HEADER + TRAIL)
+            // do not wait inside this handler (it would make the radio drop the next packets):
+            // queue the relay, the background loop sends it after a random delay
+            queueTx(out, randint(5, 40))
+            if (repeats > 1) queueTx(out, randint(60, 160))
             relayed++
         }
         collect(id, idx, total, frag.substr(HEADER + TRAIL), trail)
+    }
+
+    function queueTx(frame: string, delayMs: number) {
+        txQueue.push(frame)
+        txDue.push(input.runningTime() + delayMs)
+        if (txQueue.length > 24) {
+            txQueue.shift()
+            txDue.shift()
+        }
+    }
+
+    /** Sends queued relays that are due. Called by the background loop; not a block. */
+    //% blockHidden=true
+    export function pump() {
+        const t = input.runningTime()
+        for (let i = 0; i < txQueue.length; i++) {
+            if (txDue[i] <= t) {
+                const f = txQueue[i]
+                txQueue.removeAt(i)
+                txDue.removeAt(i)
+                if (!isAway()) radio.sendString(f)
+                return
+            }
+        }
     }
 
     function collect(id: string, idx: number, total: number, data: string, trail: string) {
@@ -315,7 +421,10 @@ namespace mesh {
         if (a === null) {
             a = new Assembly(id, total, trail)
             pending.push(a)
-            if (pending.length > PENDING_MAX) pending.shift()
+            if (pending.length > PENDING_MAX) {
+                pending.shift()
+                nLost++
+            }
         }
         if (a.have[idx]) return
         a.have[idx] = true
@@ -323,6 +432,7 @@ namespace mesh {
         a.got++
         if (a.got == a.total) {
             pending.removeElement(a)
+            nDone++
             deliver(a.parts.join(""), a.trail)
         }
     }
