@@ -97,6 +97,7 @@ namespace mainnode {
             curText = payload
             if (reportHandler) reportHandler(sender, payload)
         })
+        serial.setRxBufferSize(128)   // the default is 20 bytes, which cuts longer commands short
         serial.onDataReceived(serial.delimiters(Delimiters.NewLine), function () {
             const line = noReturns(serial.readLine())
             if (commands.word(1, line).length == 0) return
