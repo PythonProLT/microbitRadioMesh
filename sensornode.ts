@@ -7,6 +7,7 @@
  * the clock, and answers commands typed on USB serial or sent from the main node:
  *      PING  STATUS  READ 1  TIME 12 34 56  DATE 11 21 2026  HELP
  *      CFG  SET ...  GET ...  PAIR sonar  UNPAIR 2
+ * Over USB serial every line you type is echoed back as  > <line>  and then answered.
  * Your program reads the sensor (for example channel.sonarMm), logs with the datalogger and
  * sends reports with mesh.send. A command the extension doesn't know is handed to
  * "on unknown command" so you can add your own (for example LOGCLEAR).
@@ -91,7 +92,14 @@ namespace sensornode {
             }
         })
         serial.onDataReceived(serial.delimiters(Delimiters.NewLine), function () {
-            const reply = respond(serial.readLine())
+            let line = ""
+            const typed = serial.readLine()
+            for (let i = 0; i < typed.length; i++) {
+                if (typed.charAt(i) != "\r") line += typed.charAt(i)
+            }
+            if (commands.word(1, line).length == 0) return
+            serial.writeLine("> " + line)      // mirror what was typed
+            const reply = respond(line)
             if (reply != "") serial.writeLine(reply)
         })
         control.inBackground(pairLoop)

@@ -3,10 +3,10 @@
 #
 # The extension does everything except receiving the data and logging it:
 #   start main mesh     joins the mesh as "main", relays, keeps the clock, runs the serial console
-# Plug it into a computer, open a serial monitor at 115200 baud and type:
+# Plug it into a computer, open a serial monitor at 115200 baud and type (each line is echoed back as "> line", then answered):
 #     TIME 12 34 56
 #     DATE 11 21 2026
-#     pair a sonar on north1
+#     @north1 PAIR sonar
 #     @north1 STATUS
 #     HELP
 

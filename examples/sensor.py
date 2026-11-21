@@ -8,7 +8,7 @@
 #
 # One-time setup, typed in the main node's console:   TIME 12 34 56 / DATE 11 21 2026
 # and plugged into USB once to name it:               SET name north1
-# then from the main node:                            pair a sonar on north1
+# then from the main node:                            @north1 PAIR sonar
 
 sensornode.start(1)
 

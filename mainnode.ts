@@ -8,13 +8,14 @@
  * 115200 baud and type:
  *   @north1 STATUS          send a command to the node named north1 (any command works)
  *   @* CFG                  send to every node
- *   pair a sonar on north1  find a sonar on a free pin of north1 and save it
+ *   @north1 PAIR sonar      find a sonar on a free pin of north1 and save it
  *                           (also: pir, digital, mic, analog; trigger the sensor while it scans)
  *   TIME 12 34 56           set this clock and every node's clock
  *   DATE 11 21 2026         set this date and every node's date (month day year)
  *   SET name main / CFG     configure this micro:bit itself
  *   HELP                    show this list
- * Everything the sensors send back (detections and replies) arrives in "on report received",
+ * Every line you type is echoed back as  > <line>  and then answered, so you can see what the
+ * micro:bit received. Everything the sensors send back (detections and replies) arrives in "on report received",
  * where your program prints and logs it. A console line the extension doesn't know is handed to
  * "on unknown console command" so you can add your own (for example LOGCLEAR).
  *
@@ -29,27 +30,20 @@ namespace mainnode {
     let curSender = ""
     let curText = ""
 
-    function help() {
-        serial.writeLine("@name <command>   send a command to a sensor (@* = all)")
-        serial.writeLine("pair a sonar on <name>   (sonar, pir, digital, mic, analog)")
-        serial.writeLine("TIME 12 34 56   DATE 11 21 2026")
-        serial.writeLine("sensor commands: PING STATUS READ n CFG SET PAIR UNPAIR")
+    // remove carriage returns (some terminals send CR+LF)
+    function noReturns(s: string): string {
+        let out = ""
+        for (let i = 0; i < s.length; i++) {
+            if (s.charAt(i) != "\r") out += s.charAt(i)
+        }
+        return out
     }
 
-    function pairLine(line: string) {
-        let kind = commands.word(2, line)
-        let at = 3
-        if (kind.toLowerCase() == "a" || kind.toLowerCase() == "an") {
-            kind = commands.word(3, line)
-            at = 4
-        }
-        if (kind.length > 0 && commands.word(at, line).toLowerCase() == "on" && commands.word(at + 1, line).length > 0) {
-            const target = commands.word(at + 1, line)
-            mesh.send(target, "PAIR " + kind)
-            serial.writeLine("SENT PAIR " + kind + " to " + target)
-        } else {
-            serial.writeLine("usage: pair a sonar on north1")
-        }
+    function help() {
+        serial.writeLine("@name <command>   send a command to a sensor (@* = all)")
+        serial.writeLine("@name PAIR sonar   (sonar, pir, digital, mic, analog)")
+        serial.writeLine("TIME 12 34 56   DATE 11 21 2026")
+        serial.writeLine("sensor commands: PING STATUS READ n CFG SET PAIR UNPAIR")
     }
 
     function handleLine(line: string) {
@@ -78,8 +72,6 @@ namespace mainnode {
             }
             mesh.send("*", line)
             serial.writeLine("OK DATE " + clock.date())
-        } else if (verb == "PAIR") {
-            pairLine(line)
         } else if (verb == "HELP") {
             help()
         } else if (!commands.handleSerialLine(line)) {
@@ -106,7 +98,10 @@ namespace mainnode {
             if (reportHandler) reportHandler(sender, payload)
         })
         serial.onDataReceived(serial.delimiters(Delimiters.NewLine), function () {
-            handleLine(serial.readLine())
+            const line = noReturns(serial.readLine())
+            if (commands.word(1, line).length == 0) return
+            serial.writeLine("> " + line)      // mirror what was typed
+            handleLine(line)
         })
     }
 

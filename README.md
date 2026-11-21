@@ -67,14 +67,14 @@ This sets the clock on the main micro:bit and on every sensor. Plug a sensor int
 SET name north1
 ```
 
-Then, from the main micro:bit's console, tell the sensor what is connected to it:
+Every line you type is echoed back as `> line` and then answered. From the main micro:bit's console, tell the sensor what is connected to it:
 
 ```
-pair a sonar on north1
+@north1 PAIR sonar
 @north1 STATUS
 ```
 
-`pair a ...` works for `sonar`, `pir`, `digital`, `mic` and `analog`. Trigger the sensor while it scans (about 8 seconds): wave at a PIR, make a noise at a mic. `HELP` lists every command.
+`PAIR` works for `sonar`, `pir`, `digital`, `mic` and `analog`. Trigger the sensor while it scans (about 8 seconds): wave at a PIR, make a noise at a mic. `HELP` lists every command.
 
 | Block | What it does |
 |---|---|
@@ -168,7 +168,7 @@ Use `channel.triggered(n, value)` to decide whether a reading counts as a detect
 
 Pin 3, 4, 6, 7, 9 and 10 (LED screen), 5 and 11 (buttons) and 19 and 20 (I2C) are never scanned. A pin already used by a channel is skipped, so pair one sensor at a time and pair the sonar first, because a sonar on a free pin can look like a "digital" sensor. An unplugged analog pin can wander on its own, so keep the other analog pins quiet.
 
-Over serial or the mesh: `PAIR sonar` (`PAIR a sonar` works too) and `UNPAIR 2`.
+Over USB serial, or from the main node as `@north1 PAIR sonar`; `UNPAIR 2` frees channel 2.
 
 ## Commands
 
