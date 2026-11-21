@@ -74,16 +74,32 @@ A channel has a **kind** (a label of up to 7 characters), a **pin number** and a
 
 Analog kinds (`mic`, `analog`) must use pin 0, 1, 2, 3, 4 or 10. Other kinds can use pins 0-16.
 
-For a kind the extension doesn't read for you, read the sensor yourself using the channel's pin:
+For a kind the extension doesn't read for you (such as `sonar`), tell it how once, in your program. The extension then reads it through `channel.read(n)` like the others:
 
 ```ts
-if (channel.kind(1) == "sonar") {
-    // read the sensor with its own extension, using the channel's saved pin
-    value = mySonarRead(channel.digitalPin(channel.pin(1)))
-}
+channel.onCustomRead(function (kind, pin) {
+    if (kind == "sonar") {
+        channel.setReading(mySonarRead(channel.digitalPin(pin)))
+    }
+})
 ```
 
-and use `channel.triggered(1, value)` to decide whether it counts as a detection.
+Use `channel.triggered(n, value)` to decide whether a reading counts as a detection.
+
+### Pairing: let the micro:bit find the sensor
+
+`channel.pair("sonar")` (or `pir`, `digital`, `mic`, `analog`) looks for a sensor of that kind on a pin no channel uses yet, and saves it in the first free channel. It takes up to 8 seconds, so trigger the sensor while it runs.
+
+| Kind | How it decides a pin has one |
+|---|---|
+| `sonar` | 2 of 3 readings between 20 and 4000 mm (needs `onCustomRead` as above). Tries pins 0, 1, 2, 8, 12-16 |
+| `pir`, `digital` | the pin reads high at some moment in the 8 seconds (move in front of the PIR). Same pins |
+| `mic` | on pin 0, 1 or 2: quiet at some moment and loud at another (make a noise). The threshold is set halfway |
+| `analog` | on pin 0, 1 or 2: the value moves by 150 or more (turn the knob). The threshold is set halfway |
+
+Pin 3, 4, 6, 7, 9 and 10 (LED screen), 5 and 11 (buttons) and 19 and 20 (I2C) are never scanned. A pin already used by a channel is skipped, so pair one sensor at a time and pair the sonar first, because a sonar on a free pin can look like a "digital" sensor. An unplugged analog pin can wander on its own, so keep the other analog pins quiet.
+
+Over serial or the mesh: `PAIR sonar` (`PAIR a sonar` works too) and `UNPAIR 2`.
 
 ## Commands
 
@@ -96,6 +112,8 @@ The same text works over USB serial (after `commands.enableSerial()` or `command
 | `SET quiet 10` | minimum seconds between reports per channel (saved) |
 | `SET ch1 sonar 2 500` | channel 1: kind, pin, threshold (saved) |
 | `SET ch2 off` | switch channel 2 off |
+| `PAIR sonar` | find a sonar (or `pir`, `digital`, `mic`, `analog`) on a free pin and save it in the first free channel (up to 8 s) |
+| `UNPAIR 2` | switch channel 2 off |
 | `SET <variable> <value>` | save your own text variable |
 | `GET <name, quiet, chN or variable>` | read a setting or variable |
 | `DEL <variable>`, `KEYS`, `FORGET` | delete one variable, list variables, delete all variables |
