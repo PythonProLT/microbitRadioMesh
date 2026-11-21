@@ -91,6 +91,7 @@ namespace sensornode {
                 mesh.send(sender, respond(payload))
             }
         })
+        serial.setRxBufferSize(128)   // the default is 20 bytes, which cuts longer commands short
         serial.onDataReceived(serial.delimiters(Delimiters.NewLine), function () {
             let line = ""
             const typed = serial.readLine()
