@@ -5,7 +5,7 @@
  *
  * That one block joins the mesh with the node's saved name, relays other nodes' messages, keeps
  * the clock, and answers commands typed on USB serial or sent from the main node:
- *      PING  STATUS  READ 1  TIME 12 34 56  DATE 11 21 2026  HELP
+ *      PING  STATUS  READ 1  SONAR 2  TIME 12 34 56  DATE 11 21 2026  HELP
  *      CFG  SET ...  GET ...  PAIR sonar  UNPAIR 2
  * Over USB serial every line you type is echoed back as  > <line>  and then answered.
  * Your program reads the sensor (for example channel.sonarMm), logs with the datalogger and
@@ -49,7 +49,13 @@ namespace sensornode {
             }
             return "OK " + clock.date()
         }
-        if (verb == "HELP") return "PING STATUS READ n TIME DATE CFG SET PAIR UNPAIR"
+        if (verb == "SONAR") {
+            const p = parseFloat(commands.word(2, payload))
+            if (!(p >= 0 && p <= 16)) return "ERR usage: SONAR <pin 0-16>"
+            const us = channel.sonarEchoUs(p)
+            return "p" + p + " echo_us=" + us + " mm=" + channel.mmFromEcho(us)
+        }
+        if (verb == "HELP") return "PING STATUS READ n SONAR n TIME DATE CFG SET PAIR UNPAIR"
         if (commandHandler) {
             replyText = ""
             commandHandler(verb, payload)
@@ -88,7 +94,10 @@ namespace sensornode {
                 pairReplyTo = sender
                 mesh.send(sender, "PAIRING, up to 8 s: trigger the sensor")
             } else {
-                mesh.send(sender, respond(payload))
+                let reply = respond(payload)
+                // show how the command reached us: how many hops, and through whom
+                if (reply == "PONG") reply = "PONG hops=" + mesh.lastHops() + " via " + mesh.lastPath()
+                mesh.send(sender, reply)
             }
         })
         serial.setRxBufferSize(128)   // the default is 20 bytes, which cuts longer commands short

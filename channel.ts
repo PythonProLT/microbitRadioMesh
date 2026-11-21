@@ -270,6 +270,7 @@ namespace channel {
 
     let customHandler: (kind: string, pin: number) => void = null
     let customValue = 0
+    let customSet = false
 
     /** Teach channels to read a kind this extension can't read itself (for example "sonar"). Inside, use "set reading to". */
     //% block="when a channel reads a custom kind"
@@ -284,16 +285,17 @@ namespace channel {
     //% group="Readings" weight=37
     export function setReading(value: number) {
         customValue = value
+        customSet = true
     }
 
     /**
-     * Distance in millimetres from a 3-wire Sonar:bit style ultrasonic sensor (one pin carries both the
-     * trigger pulse and the echo). Returns 0 when nothing is heard. Works from about 40 to 4000 mm.
+     * The raw echo time in microseconds from a 3-wire Sonar:bit style sensor (one pin carries both the
+     * trigger pulse and the echo). 0 means no echo was heard.
      */
-    //% block="sonar distance (mm) on pin %pin"
+    //% block="sonar echo time (µs) on pin %pin"
     //% pin.min=0 pin.max=16 pin.defl=2
-    //% group="Readings" weight=36
-    export function sonarMm(pin: number): number {
+    //% group="Readings" weight=35
+    export function sonarEchoUs(pin: number): number {
         const p = digitalPin(pin)
         pins.setPull(p, PinPullMode.PullNone)
         pins.digitalWritePin(p, 0)
@@ -301,18 +303,40 @@ namespace channel {
         pins.digitalWritePin(p, 1)
         control.waitMicros(10)
         pins.digitalWritePin(p, 0)
-        const echo = pins.pulseIn(p, PulseValue.High, 25000)
-        return Math.idiv(echo * 17, 100)
+        return pins.pulseIn(p, PulseValue.High, 25000)
+    }
+
+    /** Turn a sonar echo time into millimetres, the way the sonarbit extension does (whole centimetres times 10, 0 if over 400 cm). */
+    export function mmFromEcho(echoUs: number): number {
+        const cm = Math.idiv(echoUs, 58)
+        if (cm > 400) return 0
+        return cm * 10
+    }
+
+    /**
+     * Distance in millimetres from a 3-wire Sonar:bit style ultrasonic sensor on one pin.
+     * Returns 0 when nothing is heard. Works from about 40 to 4000 mm.
+     */
+    //% block="sonar distance (mm) on pin %pin"
+    //% pin.min=0 pin.max=16 pin.defl=2
+    //% group="Readings" weight=36
+    export function sonarMm(pin: number): number {
+        return mmFromEcho(sonarEchoUs(pin))
     }
 
     function readKind(k: string, p: number): number {
+        if (customHandler) {
+            // your program gets the first go (for example to read a sonar with its own extension)
+            customValue = 0
+            customSet = false
+            customHandler(k, p)
+            if (customSet) return customValue
+        }
         if (k == "sonar") return sonarMm(p)
         if (k == "mic") return analogPeak(p, 50)
         if (k == "analog") return pins.analogReadPin(analogPin(p))
         if (k == "digital" || k == "pir") return pins.digitalReadPin(digitalPin(p))
-        customValue = 0
-        if (customHandler) customHandler(k, p)
-        return customValue
+        return 0
     }
 
     /** Read a channel. Built-in kinds are read for you; other kinds (like sonar) use "when a channel reads a custom kind". */

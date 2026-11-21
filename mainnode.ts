@@ -13,6 +13,7 @@
  *   TIME 12 34 56           set this clock and every node's clock
  *   DATE 11 21 2026         set this date and every node's date (month day year)
  *   SET name main / CFG     configure this micro:bit itself
+ *   HOPS OFF | HOPS ON      hide or show the hops line printed under every report
  *   HELP                    show this list
  * Every line you type is echoed back as  > <line>  and then answered, so you can see what the
  * micro:bit received. Everything the sensors send back (detections and replies) arrives in "on report received",
@@ -27,6 +28,7 @@ namespace mainnode {
     let reportHandler: (sender: string, text: string) => void = null
     let consoleHandler: (verb: string, text: string) => void = null
     // the report that is being handled right now
+    let showHops = true
     let curSender = ""
     let curText = ""
 
@@ -58,6 +60,9 @@ namespace mainnode {
             }
             mesh.send(target, commands.textAfter(1, line))
             serial.writeLine("SENT " + target)
+        } else if (verb == "HOPS") {
+            showHops = commands.word(2, line).toUpperCase() != "OFF"
+            serial.writeLine(showHops ? "OK hops shown" : "OK hops hidden")
         } else if (verb == "TIME") {
             if (!clock.setTime(parseFloat(commands.word(2, line)), parseFloat(commands.word(3, line)), parseFloat(commands.word(4, line)))) {
                 serial.writeLine("ERR usage: TIME 12 34 56")
@@ -95,6 +100,8 @@ namespace mainnode {
         mesh.onMessage(function (sender: string, payload: string, to: string) {
             curSender = sender
             curText = payload
+            // show the route every message took, so you can see the mesh relaying
+            if (showHops) serial.writeLine("  [" + sender + " -> me: " + mesh.lastHops() + " hop" + (mesh.lastHops() == 1 ? "" : "s") + " via " + mesh.lastPath() + "]")
             if (reportHandler) reportHandler(sender, payload)
         })
         serial.setRxBufferSize(128)   // the default is 20 bytes, which cuts longer commands short
@@ -123,6 +130,20 @@ namespace mainnode {
     //% group="Main node" weight=80
     export function onUnknownConsoleCommand(handler: (verb: string, text: string) => void) {
         consoleHandler = handler
+    }
+
+    /** How many hops the current report took to reach the main node (1 = heard directly). */
+    //% block="report hops"
+    //% group="Main node" weight=68
+    export function reportHops(): number {
+        return mesh.lastHops()
+    }
+
+    /** The path the current report took, like "north1>north2". */
+    //% block="report path"
+    //% group="Main node" weight=67
+    export function reportPath(): string {
+        return mesh.lastPath()
     }
 
     /** The name of the node that sent the current report. */

@@ -34,9 +34,11 @@ namespace mesh {
         got: number
         parts: string[]
         have: boolean[]
-        constructor(id: string, total: number) {
+        trail: string
+        constructor(id: string, total: number, trail: string) {
             this.id = id
             this.total = total
+            this.trail = trail
             this.got = 0
             this.parts = []
             this.have = []
@@ -55,6 +57,9 @@ namespace mesh {
     let relayed = 0
     let seen: string[] = []
     let pending: Assembly[] = []
+    let lastTrail = "."
+    let tagKeys: string[] = []
+    let tagNames: string[] = []
     let msgHandler: (sender: string, payload: string, to: string) => void = null
     let valueHandler: (sender: string, key: string, value: number) => void = null
 
@@ -145,6 +150,35 @@ namespace mesh {
         return lastSig
     }
 
+    /**
+     * How many radio hops the last message delivered to this node took.
+     * 1 means it was heard straight from the sender; 2 means one node relayed it, and so on.
+     */
+    //% block="mesh last message hops"
+    //% group="Node" weight=67
+    export function lastHops(): number {
+        const n = lastTrail.indexOf(".")
+        return n < 0 ? TRAIL : n
+    }
+
+    /**
+     * The path the last delivered message took, sender first, like "north1>k>north2".
+     * Nodes are shown by name when this node has heard from them, otherwise by their one-character tag.
+     * This node itself is not included.
+     */
+    //% block="mesh last message path"
+    //% group="Node" weight=66
+    export function lastPath(): string {
+        let out = ""
+        const n = lastHops()
+        for (let i = 0; i < n; i++) {
+            const tag = lastTrail.charAt(i)
+            const k = tagKeys.indexOf(tag)
+            out += (i > 0 ? ">" : "") + (k >= 0 ? tagNames[k] : tag)
+        }
+        return out
+    }
+
     /** How many fragments this node has relayed since power-up. */
     //% block="mesh fragments relayed"
     //% group="Node" weight=68
@@ -230,16 +264,16 @@ namespace mesh {
             radio.sendString(DIGITS.charAt(hops - 1) + key + newTrail + frag.substr(HEADER + TRAIL))
             relayed++
         }
-        collect(id, idx, total, frag.substr(HEADER + TRAIL))
+        collect(id, idx, total, frag.substr(HEADER + TRAIL), trail)
     }
 
-    function collect(id: string, idx: number, total: number, data: string) {
+    function collect(id: string, idx: number, total: number, data: string, trail: string) {
         let a: Assembly = null
         for (let i = 0; i < pending.length; i++) {
             if (pending[i].id == id && pending[i].total == total) a = pending[i]
         }
         if (a === null) {
-            a = new Assembly(id, total)
+            a = new Assembly(id, total, trail)
             pending.push(a)
             if (pending.length > PENDING_MAX) pending.shift()
         }
@@ -249,16 +283,33 @@ namespace mesh {
         a.got++
         if (a.got == a.total) {
             pending.removeElement(a)
-            deliver(a.parts.join(""))
+            deliver(a.parts.join(""), a.trail)
         }
     }
 
-    function deliver(logical: string) {
+    // remember which name goes with a one-character tag, so paths can be shown with names
+    function learn(tag: string, name: string) {
+        const i = tagKeys.indexOf(tag)
+        if (i >= 0) {
+            tagNames[i] = name
+            return
+        }
+        tagKeys.push(tag)
+        tagNames.push(name)
+        if (tagKeys.length > 12) {
+            tagKeys.shift()
+            tagNames.shift()
+        }
+    }
+
+    function deliver(logical: string, trail: string) {
         const f = logical.split("|")
         if (f.length != 3) return
         const to = f[0]
         const payload = f[1]
         const sender = f[2]
+        lastTrail = trail
+        if (trail.charAt(0) != ".") learn(trail.charAt(0), sender)
         if (to != nodeName && to != "*") return
         if (msgHandler) msgHandler(sender, payload, to)
         if (valueHandler) {

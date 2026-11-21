@@ -9,6 +9,18 @@ A MakeCode extension for the **micro:bit V2** that lets many micro:bits behave l
 
 You can use it for sensors, remote controls, classroom networks, or anything else where several micro:bits need to talk to each other and be set up without re-flashing them.
 
+## Seeing the mesh hops
+
+Every message carries the route it took. To check the mesh is really relaying:
+
+- Type `@north1 PING`. The reply reads `PONG hops=2 via main>k`: how many radio hops the command took to reach north1, and who passed it on.
+- The main node prints a line under every report, for example `[north1 -> me: 2 hops via north1>k]`. `1 hop` means it was heard directly. Type `HOPS OFF` / `HOPS ON` to hide or show these lines.
+- Blocks: `mesh last message hops` and `mesh last message path` (any node), `report hops` and `report path` (main node).
+
+A sender shows by name. Relays show as a one-character tag (a hash of their name) until that node has sent something to you itself. To force a test, put a node out of the main node's range so its messages can only arrive through another sensor.
+
+Sonar check: `@north1 SONAR 2` returns the raw echo (`p2 echo_us=1160 mm=200`). `echo_us=0` means no echo at all: check the wiring and that the Sonar:bit has 3-5 V.
+
 ## Requirements
 
 - A micro:bit with working flash storage (V2).
