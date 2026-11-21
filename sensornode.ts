@@ -49,13 +49,19 @@ namespace sensornode {
             }
             return "OK " + clock.date()
         }
+        if (verb == "LEAVE") {
+            const sec = parseFloat(commands.word(2, payload))
+            if (!(sec >= 1 && sec <= 3600)) return "ERR usage: LEAVE <seconds 1-3600>"
+            mesh.leave(sec)
+            return "OK LEAVING for " + Math.floor(sec) + " s, back automatically"
+        }
         if (verb == "SONAR") {
             const p = parseFloat(commands.word(2, payload))
             if (!(p >= 0 && p <= 16)) return "ERR usage: SONAR <pin 0-16>"
             const us = channel.sonarEchoUs(p)
             return "p" + p + " echo_us=" + us + " mm=" + channel.mmFromEcho(us)
         }
-        if (verb == "HELP") return "PING STATUS READ n SONAR n TIME DATE CFG SET PAIR UNPAIR"
+        if (verb == "HELP") return "PING STATUS READ n SONAR n LEAVE s TIME DATE CFG SET PAIR UNPAIR"
         if (commandHandler) {
             replyText = ""
             commandHandler(verb, payload)

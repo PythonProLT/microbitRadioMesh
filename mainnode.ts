@@ -13,6 +13,8 @@
  *   TIME 12 34 56           set this clock and every node's clock
  *   DATE 11 21 2026         set this date and every node's date (month day year)
  *   SET name main / CFG     configure this micro:bit itself
+ *   @north1 LEAVE 60        take north1 out of the mesh for 60 s (it rejoins by itself)
+ *   LEAVE 60 | JOIN         the same for this main node, or rejoin early
  *   HOPS OFF | HOPS ON      hide or show the hops line printed under every report
  *   HELP                    show this list
  * Every line you type is echoed back as  > <line>  and then answered, so you can see what the
@@ -60,6 +62,17 @@ namespace mainnode {
             }
             mesh.send(target, commands.textAfter(1, line))
             serial.writeLine("SENT " + target)
+        } else if (verb == "LEAVE") {
+            const sec = parseFloat(commands.word(2, line))
+            if (!(sec >= 1 && sec <= 3600)) {
+                serial.writeLine("usage: LEAVE <seconds>  (or @name LEAVE <seconds>)")
+            } else {
+                mesh.leave(sec)
+                serial.writeLine("OK main leaves the mesh for " + Math.floor(sec) + " s")
+            }
+        } else if (verb == "JOIN") {
+            mesh.rejoin()
+            serial.writeLine("OK main is in the mesh")
         } else if (verb == "HOPS") {
             showHops = commands.word(2, line).toUpperCase() != "OFF"
             serial.writeLine(showHops ? "OK hops shown" : "OK hops hidden")

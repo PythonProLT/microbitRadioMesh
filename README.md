@@ -21,6 +21,14 @@ A sender shows by name. Relays show as a one-character tag (a hash of their name
 
 Sonar check: `@north1 SONAR 2` returns the raw echo (`p2 echo_us=1160 mm=200`). `echo_us=0` means no echo at all: check the wiring and that the Sonar:bit has 3-5 V.
 
+## Taking a node out of the mesh for a while
+
+```
+@north1 LEAVE 60
+```
+
+north1 replies `OK LEAVING for 60 s`, then for 60 seconds it sends, hears and relays nothing, and rejoins by itself (1 to 3600 s). While it is away it cannot hear a cancel command, so wait it out, or reset it. Its sensor still reads and logs locally; the reports it would send are dropped. Use it to test that traffic reroutes around a relay: `@far PING` shows a different `via` path while the middle node is away. On the main node, `LEAVE 60` and `JOIN` do the same for itself. Blocks: `mesh leave for s`, `mesh rejoin`, `mesh is away`, `mesh seconds until rejoin`.
+
 ## Requirements
 
 - A micro:bit with working flash storage (V2).

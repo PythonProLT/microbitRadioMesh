@@ -58,6 +58,8 @@ namespace mesh {
     let seen: string[] = []
     let pending: Assembly[] = []
     let lastTrail = "."
+    let awayFrom = 0
+    let awayUntil = 0
     let tagKeys: string[] = []
     let tagNames: string[] = []
     let msgHandler: (sender: string, payload: string, to: string) => void = null
@@ -151,6 +153,43 @@ namespace mesh {
     }
 
     /**
+     * Take this node out of the mesh for a number of seconds (1 to 3600). It starts after about 1.5 s, so
+     * the reply to the command still gets out. While away it sends, receives and relays nothing, then it
+     * rejoins by itself.
+     */
+    //% block="mesh leave for %seconds s"
+    //% seconds.min=1 seconds.max=3600 seconds.defl=60
+    //% group="Node" weight=65
+    export function leave(seconds: number) {
+        const s = Math.max(1, Math.min(3600, Math.floor(seconds)))
+        awayFrom = input.runningTime() + 1500
+        awayUntil = awayFrom + s * 1000
+    }
+
+    /** Rejoin the mesh now (works from the node's own program or serial console; a node that is away cannot hear commands). */
+    //% block="mesh rejoin"
+    //% group="Node" weight=64
+    export function rejoin() {
+        awayUntil = 0
+    }
+
+    /** True while this node is excluded from the mesh. */
+    //% block="mesh is away"
+    //% group="Node" weight=63
+    export function isAway(): boolean {
+        const t = input.runningTime()
+        return t >= awayFrom && t < awayUntil
+    }
+
+    /** Seconds left before this node rejoins the mesh (0 if it is in the mesh). */
+    //% block="mesh seconds until rejoin"
+    //% group="Node" weight=62
+    export function awayLeft(): number {
+        const t = input.runningTime()
+        return t < awayUntil ? Math.idiv(awayUntil - t, 1000) + 1 : 0
+    }
+
+    /**
      * How many radio hops the last message delivered to this node took.
      * 1 means it was heard straight from the sender; 2 means one node relayed it, and so on.
      */
@@ -212,7 +251,7 @@ namespace mesh {
     //% block="mesh send to %to message %payload"
     //% group="Messages" weight=100
     export function send(to: string, payload: string) {
-        if (!started) return
+        if (!started || isAway()) return
         const target = cleanName(to)
         const me = nodeName
         if (target.length == 0) return
@@ -243,6 +282,7 @@ namespace mesh {
     // ----------------------------- receiving / relaying -----------------------------
 
     function onPacket(frag: string) {
+        if (isAway()) return          // excluded from the mesh: hear nothing, relay nothing
         lastSig = radio.receivedPacket(RadioPacketProperty.SignalStrength)
         if (frag.length < HEADER + TRAIL + 1) return
         const hops = DIGITS.indexOf(frag.charAt(0))
