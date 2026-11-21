@@ -1,56 +1,25 @@
 /**
- * Sensor node: the mesh part is ONE block, the sensor part is a few simple blocks you can see.
+ * Sensor node: everything except reading the sensor and logging the data.
  *
- *   on start:                 start sensor mesh on radio group 1
- *   on sensor detection:      log this detection to datalogger
- *                             report this detection to "main"
+ *   start sensor mesh on radio group 1
  *
- * "start sensor mesh" does all the radio work for you: it joins the mesh with its saved name,
- * relays other nodes' messages, and answers commands typed on USB serial or sent from the
- * main node:
- *      PING  STATUS  READ 1  LAST  TIME 12 34 56  DATE 11 21 2026  LOGCLEAR  HELP
+ * That one block joins the mesh with the node's saved name, relays other nodes' messages, keeps
+ * the clock, and answers commands typed on USB serial or sent from the main node:
+ *      PING  STATUS  READ 1  TIME 12 34 56  DATE 11 21 2026  HELP
  *      CFG  SET ...  GET ...  PAIR sonar  UNPAIR 2
- * "on sensor detection" runs your blocks each time a channel (see SET / PAIR) detects something,
- * no more often than the channel's quiet time.
+ * Your program reads the sensor (for example channel.sonarMm), logs with the datalogger and
+ * sends reports with mesh.send. A command the extension doesn't know is handed to
+ * "on unknown command" so you can add your own (for example LOGCLEAR).
  *
- * Needs the Radio and Datalogger extensions (micro:bit V2).
+ * Needs the Radio extension.
  */
 //% color="#16A085" weight=95 icon="" block="Sensor node"
 namespace sensornode {
     let started = false
-    let reading = false
-    let logReady = false
-    let checkMs = 300
-    let lastEvent = "none"
-    let logResets = 0
     let pairCommand = ""
     let pairReplyTo = ""
-    let lastSent: number[] = []
-    let detectHandler: (channelNo: number, kind: string, value: number) => void = null
-    // the detection that is being handled right now
-    let curChannel = 0
-    let curKind = ""
-    let curValue = 0
-    let curTime = ""
-
-    // ----------------------------- datalogger -----------------------------
-
-    function resetLog() {
-        datalogger.deleteLog(datalogger.DeleteType.Fast)
-        datalogger.setColumnTitles("timestamp", "channel", "value")
-    }
-
-    function prepareLog() {
-        if (logReady) return
-        logReady = true
-        datalogger.setColumnTitles("timestamp", "channel", "value")
-        datalogger.onLogFull(function () {
-            logResets++
-            resetLog()
-        })
-    }
-
-    // ----------------------------- commands -----------------------------
+    let replyText = ""
+    let commandHandler: (verb: string, text: string) => void = null
 
     /** Work out the reply to one command. (PAIR is handled separately when it arrives by radio.) */
     function respond(payload: string): string {
@@ -60,14 +29,13 @@ namespace sensornode {
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
             return "up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
-                " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount() + " clr=" + logResets
+                " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount()
         }
         if (verb == "READ") {
             const n = parseFloat(commands.word(2, payload))
             if (!(n >= 1 && n <= channel.MAX) || !channel.enabled(n)) return "ERR channel off"
             return "ch" + n + "=" + channel.read(n)
         }
-        if (verb == "LAST") return "last " + lastEvent
         if (verb == "TIME") {
             if (!clock.setTime(parseFloat(commands.word(2, payload)), parseFloat(commands.word(3, payload)), parseFloat(commands.word(4, payload)))) {
                 return "ERR usage: TIME 12 34 56"
@@ -80,12 +48,12 @@ namespace sensornode {
             }
             return "OK " + clock.date()
         }
-        if (verb == "LOGCLEAR") {
-            prepareLog()
-            resetLog()
-            return "OK log cleared"
+        if (verb == "HELP") return "PING STATUS READ n TIME DATE CFG SET PAIR UNPAIR"
+        if (commandHandler) {
+            replyText = ""
+            commandHandler(verb, payload)
+            if (replyText != "") return replyText
         }
-        if (verb == "HELP") return "PING STATUS READ n LAST TIME DATE LOGCLEAR PAIR CFG SET"
         return "ERR UNKNOWN"
     }
 
@@ -100,8 +68,6 @@ namespace sensornode {
             basic.pause(200)
         }
     }
-
-    // ----------------------------- the mesh block -----------------------------
 
     /**
      * Join the mesh and answer commands. Put this one block in "on start".
@@ -131,75 +97,21 @@ namespace sensornode {
         control.inBackground(pairLoop)
     }
 
-    // ----------------------------- the sensor blocks -----------------------------
-
-    function readLoop() {
-        while (true) {
-            for (let n = 1; n <= channel.MAX; n++) {
-                if (!channel.enabled(n)) continue
-                const value = channel.read(n)
-                if (channel.triggered(n, value) && input.runningTime() - lastSent[n - 1] > channel.quietMs()) {
-                    lastSent[n - 1] = input.runningTime()
-                    curChannel = n
-                    curKind = channel.kind(n)
-                    curValue = value
-                    curTime = clock.time()
-                    lastEvent = n + " " + curKind + " " + curTime + " " + value
-                    if (detectHandler) detectHandler(n, curKind, value)
-                }
-            }
-            basic.pause(checkMs)
-        }
-    }
-
     /**
-     * Runs your blocks each time a channel detects something. Set channels up with the
-     * commands SET ch1 sonar 2 500 or PAIR sonar. The detection is the channel number,
-     * its kind (sonar, pir, mic...) and the reading.
+     * Runs when a command arrives that the extension doesn't know. The verb is the first word in capitals
+     * (for example LOGCLEAR); the text is the whole command. Answer with "reply with".
      */
-    //% block="on sensor detection"
+    //% block="on unknown command"
     //% draggableParameters="reporter"
     //% group="Sensor node" weight=90
-    export function onDetection(handler: (channelNo: number, kind: string, value: number) => void) {
-        detectHandler = handler
-        if (reading) return
-        reading = true
-        for (let i = 0; i < channel.MAX; i++) lastSent.push(-1000000)
-        control.inBackground(readLoop)
+    export function onUnknownCommand(handler: (verb: string, text: string) => void) {
+        commandHandler = handler
     }
 
-    /** Save the current detection in the datalogger with the date and time. Clears the log by itself when it is full. */
-    //% block="log this detection to datalogger"
-    //% group="Sensor node" weight=80
-    export function logDetection() {
-        prepareLog()
-        datalogger.log(
-            datalogger.createCV("timestamp", clock.date() + " " + curTime),
-            datalogger.createCV("channel", curChannel),
-            datalogger.createCV("value", curValue)
-        )
-    }
-
-    /** Send the current detection to another node (normally "main"). */
-    //% block="report this detection to %name"
-    //% name.defl="main"
-    //% group="Sensor node" weight=79
-    export function reportDetection(name: string) {
-        mesh.send(name, "LOG " + lastEvent)
-    }
-
-    /** How often the channels are read, in milliseconds (default 300). */
-    //% block="check sensors every %ms ms"
-    //% ms.min=50 ms.max=10000 ms.defl=300
-    //% group="Options" weight=60
-    export function checkEvery(ms: number) {
-        checkMs = Math.max(50, Math.floor(ms))
-    }
-
-    /** The last detection, like "1 sonar 12:30:00 237", or "none". */
-    //% block="last detection"
-    //% group="Options" weight=59
-    export function lastDetection(): string {
-        return lastEvent
+    /** Set the answer to the command being handled. Use inside "on unknown command". */
+    //% block="reply with %text"
+    //% group="Sensor node" weight=89
+    export function replyWith(text: string) {
+        replyText = text
     }
 }

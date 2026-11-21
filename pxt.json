@@ -1,18 +1,21 @@
 {
     "name": "radio-mesh",
-    "version": "0.5.0",
-    "description": "Named micro:bits that relay each other's radio messages, with sensor channels and settings saved to flash",
+    "version": "0.7.0",
+    "description": "Named micro:bits that relay each other's radio messages. One block each turns a micro:bit into a sensor node or the main node.",
     "dependencies": {
         "core": "*",
         "radio": "*",
-        "microbit-pxt-flashstorage": "github:bsiever/microbit-pxt-flashstorage#v0.1.4"
+        "flashstorage": "github:bsiever/microbit-pxt-flashstorage#master"
     },
     "files": [
         "README.md",
         "nodestore.ts",
         "mesh.ts",
         "channel.ts",
-        "commands.ts"
+        "commands.ts",
+        "clock.ts",
+        "sensornode.ts",
+        "mainnode.ts"
     ],
     "supportedTargets": [
         "microbit"

@@ -7,10 +7,11 @@
  *   pir, digital   digital pin; detection when it reads 1
  *   mic, analog    analog pin (0-4, 10); "mic" measures peak-to-peak over 50 ms;
  *                  detection when the value is ABOVE the threshold
- * Any other kind (for example "sonar") is read by YOUR program: put a
- * "when a channel reads a custom kind" block in it, and inside it hand back the
- * reading with "set reading to". For the kind "sonar" a detection is a reading
- * above 0 and BELOW the threshold, for any other custom kind ABOVE the threshold.
+ *   sonar          3-wire Sonar:bit style sensor on one pin; the reading is the distance
+ *                  in mm (0 = no echo); detection when 0 < value < threshold
+ * Any other kind is read by YOUR program: put a "when a channel reads a custom
+ * kind" block in it, and inside it hand back the reading with "set reading to".
+ * A detection for a custom kind is a reading ABOVE the threshold.
  *
  * channel.pair("sonar") (also pir, digital, mic, analog) looks for a sensor of
  * that kind on a pin no channel uses yet, and saves it in the first free channel.
@@ -285,7 +286,27 @@ namespace channel {
         customValue = value
     }
 
+    /**
+     * Distance in millimetres from a 3-wire Sonar:bit style ultrasonic sensor (one pin carries both the
+     * trigger pulse and the echo). Returns 0 when nothing is heard. Works from about 40 to 4000 mm.
+     */
+    //% block="sonar distance (mm) on pin %pin"
+    //% pin.min=0 pin.max=16 pin.defl=2
+    //% group="Readings" weight=36
+    export function sonarMm(pin: number): number {
+        const p = digitalPin(pin)
+        pins.setPull(p, PinPullMode.PullNone)
+        pins.digitalWritePin(p, 0)
+        control.waitMicros(2)
+        pins.digitalWritePin(p, 1)
+        control.waitMicros(10)
+        pins.digitalWritePin(p, 0)
+        const echo = pins.pulseIn(p, PulseValue.High, 25000)
+        return Math.idiv(echo * 17, 100)
+    }
+
     function readKind(k: string, p: number): number {
+        if (k == "sonar") return sonarMm(p)
         if (k == "mic") return analogPeak(p, 50)
         if (k == "analog") return pins.analogReadPin(analogPin(p))
         if (k == "digital" || k == "pir") return pins.digitalReadPin(digitalPin(p))
@@ -329,7 +350,6 @@ namespace channel {
     }
 
     function pairSonar(ch: number): string {
-        if (!customHandler) return "ERR no sonar reader: add 'when a channel reads a custom kind'"
         for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
             const p = DIGITAL_CANDIDATES[i]
             if (pinInUse(p)) continue
