@@ -306,6 +306,33 @@ namespace channel {
         return pins.pulseIn(p, PulseValue.High, 25000)
     }
 
+    /**
+     * The same measurement as "sonar echo time", but timed by polling the pin instead of the pulseIn
+     * function, so it does not depend on the micro:bit's pin-event system. 0 means no echo was heard.
+     */
+    //% block="sonar echo time by polling (µs) on pin %pin"
+    //% pin.min=0 pin.max=16 pin.defl=2
+    //% group="Readings" weight=34
+    export function sonarPollUs(pin: number): number {
+        const p = digitalPin(pin)
+        pins.setPull(p, PinPullMode.PullNone)
+        pins.digitalWritePin(p, 0)
+        control.waitMicros(2)
+        pins.digitalWritePin(p, 1)
+        control.waitMicros(10)
+        pins.digitalWritePin(p, 0)
+        // the pin becomes an input on the first read; wait for the echo to start, then time it
+        let t = input.runningTimeMicros()
+        while (pins.digitalReadPin(p) == 0) {
+            if (input.runningTimeMicros() - t > 6000) return 0
+        }
+        const start = input.runningTimeMicros()
+        while (pins.digitalReadPin(p) == 1) {
+            if (input.runningTimeMicros() - start > 25000) return 0
+        }
+        return input.runningTimeMicros() - start
+    }
+
     /** Turn a sonar echo time into millimetres, the way the sonarbit extension does (whole centimetres times 10, 0 if over 400 cm). */
     export function mmFromEcho(echoUs: number): number {
         const cm = Math.idiv(echoUs, 58)
@@ -321,6 +348,7 @@ namespace channel {
     //% pin.min=0 pin.max=16 pin.defl=2
     //% group="Readings" weight=36
     export function sonarMm(pin: number): number {
+        // only the ElecFreaks sonarbit extension is used to read the sonar
         return sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
     }
 

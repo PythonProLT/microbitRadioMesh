@@ -29,7 +29,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.8.0 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount()
         }
         if (verb == "READ") {
@@ -80,8 +80,10 @@ namespace sensornode {
             const p = parseFloat(commands.word(2, payload))
             if (!(p >= 0 && p <= 16)) return "ERR usage: SONAR <pin 0-16>"
             const us = channel.sonarEchoUs(p)
-            // two independent readings: our own pulse (echo_us) and the sonarbit extension (mm)
-            return "p" + p + " echo_us=" + us + " sonarbit_mm=" + channel.sonarMm(p)
+            // independent readings: pulseIn, pin polling, and the sonarbit extension on its own
+            const poll = channel.sonarPollUs(p)
+            const sb = sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, channel.digitalPin(p))
+            return "p" + p + " pulsein_us=" + us + " poll_us=" + poll + " sonarbit_mm=" + sb
         }
         if (verb == "HELP") return "PING STATUS STATS HEAR SPEAK READ n SONAR n LEAVE s TIME DATE CFG SET PAIR UNPAIR"
         if (commandHandler) {

@@ -19,7 +19,7 @@ Every message carries the route it took. To check the mesh is really relaying:
 
 A sender shows by name. Relays show as a one-character tag (a hash of their name) until that node has sent something to you itself. To force a test, put a node out of the main node's range so its messages can only arrive through another sensor.
 
-Sonar check: `@north1 SONAR 2` takes two independent readings on pin 2: `p2 echo_us=1160 sonarbit_mm=200`. `echo_us` is a raw pulse from this extension, `sonarbit_mm` comes from the ElecFreaks sonarbit extension (installed automatically). If both are 0 there is no echo at all: check the wiring, 3-5 V on the Sonar:bit's V pin, and that nothing is closer than 4 cm.
+Sonar check: `@north1 SONAR 2` times the echo three independent ways on pin 2: `p2 pulsein_us=1160 poll_us=1170 sonarbit_mm=200`. `pulsein_us` and `poll_us` are the raw echo time from this extension, `sonarbit_mm` is the ElecFreaks sonarbit extension (installed automatically). Only `sonarbit_mm` is used for real readings (`READ`, `PAIR`, your program); the other two are diagnostics. If all three are 0 there is no echo at all: check the wiring, 3-5 V on the Sonar:bit's V pin, and that nothing is closer than 4 cm. `STATUS` starts with `v=` so you can check which version is flashed.
 
 ## Taking a node out of the mesh for a while
 
