@@ -9,6 +9,10 @@ A MakeCode extension for the **micro:bit V2** that lets many micro:bits behave l
 
 You can use it for sensors, remote controls, classroom networks, or anything else where several micro:bits need to talk to each other and be set up without re-flashing them.
 
+## Readings over the mesh
+
+`READ` and `SONAR` commands that arrive over the radio are not run inside the radio's message handler. The node queues them, waits until it has heard nothing for 250 ms (up to 0.5 s), then takes the reading and sends the reply a moment later. The same wait happens before every sonar reading in your own program. Radio traffic during the timed echo measurement can spoil it; this keeps them apart.
+
 ## Seeing the mesh hops
 
 Every message carries the route it took. To check the mesh is really relaying:

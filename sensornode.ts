@@ -17,6 +17,8 @@
 //% color="#16A085" weight=95 icon="" block="Sensor node"
 namespace sensornode {
     let started = false
+    let jobText: string[] = []
+    let jobFrom: string[] = []
     let pairCommand = ""
     let pairReplyTo = ""
     let replyText = ""
@@ -29,7 +31,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.0 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.8.1 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount()
         }
         if (verb == "READ") {
@@ -94,9 +96,16 @@ namespace sensornode {
         return "ERR UNKNOWN"
     }
 
-    // background job: pairing takes a few seconds, so it is done here and the radio stays free
+    // background jobs: pairing takes seconds, and sensor readings are timing-sensitive, so they are done here
+    // (not inside the radio's message handler) and only once the radio has gone quiet
     function pairLoop() {
         while (true) {
+            while (jobText.length > 0) {
+                const text = jobText.shift()
+                const from = jobFrom.shift()
+                mesh.waitQuiet(600)
+                mesh.send(from, respond(text))
+            }
             if (pairCommand != "") {
                 const cmd = pairCommand
                 pairCommand = ""
@@ -123,6 +132,11 @@ namespace sensornode {
                 pairCommand = payload
                 pairReplyTo = sender
                 mesh.send(sender, "PAIRING, up to 8 s: trigger the sensor")
+            } else if (commands.word(1, payload).toUpperCase() == "READ" || commands.word(1, payload).toUpperCase() == "SONAR") {
+                if (jobText.length < 4) {
+                    jobText.push(payload)
+                    jobFrom.push(sender)
+                }
             } else {
                 let reply = respond(payload)
                 // show how the command reached us: how many hops, and through whom

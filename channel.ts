@@ -348,7 +348,8 @@ namespace channel {
     //% pin.min=0 pin.max=16 pin.defl=2
     //% group="Readings" weight=36
     export function sonarMm(pin: number): number {
-        // only the ElecFreaks sonarbit extension is used to read the sonar
+        // only the ElecFreaks sonarbit extension is used to read the sonar; wait for a quiet radio first
+        mesh.waitQuiet(500)
         return sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
     }
 

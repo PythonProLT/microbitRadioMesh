@@ -66,6 +66,7 @@ namespace mesh {
     let txQueue: string[] = []
     let txDue: number[] = []
     let pumping = false
+    let lastRxMs = 0
     let seen: string[] = []
     let pending: Assembly[] = []
     let lastTrail = "."
@@ -388,6 +389,7 @@ namespace mesh {
 
     function onPacket(frag: string) {
         if (isAway()) return          // excluded from the mesh: hear nothing, relay nothing
+        lastRxMs = input.runningTime()
         lastSig = radio.receivedPacket(RadioPacketProperty.SignalStrength)
         nHeard++
         if (frag.length < HEADER + TRAIL + 1) return
@@ -433,6 +435,19 @@ namespace mesh {
             relayed++
         }
         collect(id, idx, total, frag.substr(HEADER + TRAIL), trail)
+    }
+
+    /**
+     * Wait (up to maxMs) until the radio has been quiet for a moment: nothing heard for 250 ms and nothing
+     * waiting to be relayed. Timing-sensitive readings (the sonar) call this first, because radio traffic
+     * during a reading can spoil it. Never call it from inside "on mesh message".
+     */
+    //% blockHidden=true
+    export function waitQuiet(maxMs: number) {
+        const end = input.runningTime() + maxMs
+        while (input.runningTime() < end && (txQueue.length > 0 || input.runningTime() - lastRxMs < 250)) {
+            basic.pause(10)
+        }
     }
 
     function queueTx(frame: string, delayMs: number) {
