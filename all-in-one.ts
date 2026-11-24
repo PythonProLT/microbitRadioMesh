@@ -620,21 +620,17 @@ namespace mesh {
         }
     }
 
-    /** Switch the radio off so nothing can disturb a timing-sensitive reading. Always follow with resumeRadio. */
+    /** Hold this node's own sending during a timing-sensitive reading. Always follow with resumeRadio. */
     //% blockHidden=true
     export function pauseRadio() {
         if (!started || radioPaused) return
         radioPaused = true
-        radio.off()
     }
 
-    /** Switch the radio back on after pauseRadio, with the same group and power as before. */
+    /** Allow sending again after pauseRadio. */
     //% blockHidden=true
     export function resumeRadio() {
         if (!radioPaused) return
-        radio.on()
-        radio.setGroup(groupNum)
-        radio.setTransmitPower(7)
         lastRxMs = input.runningTime()
         radioPaused = false
     }
@@ -1580,7 +1576,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.2 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.8.3 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount()
         }
         if (verb == "READ") {

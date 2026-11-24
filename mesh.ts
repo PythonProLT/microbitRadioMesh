@@ -456,23 +456,19 @@ namespace mesh {
     }
 
     /**
-     * Switch the radio off so nothing can disturb a timing-sensitive reading (the sonar). Always follow it
-     * with resumeRadio. While it is off, nothing is sent or heard (a reading takes well under a second).
+     * Hold this node's own sending (relays and replies) during a timing-sensitive reading. Always follow it
+     * with resumeRadio. The radio hardware itself stays on.
      */
     //% blockHidden=true
     export function pauseRadio() {
         if (!started || radioPaused) return
         radioPaused = true
-        radio.off()
     }
 
-    /** Switch the radio back on after pauseRadio, with the same group and power as before. */
+    /** Allow sending again after pauseRadio. */
     //% blockHidden=true
     export function resumeRadio() {
         if (!radioPaused) return
-        radio.on()
-        radio.setGroup(groupNum)
-        radio.setTransmitPower(7)
         lastRxMs = input.runningTime()
         radioPaused = false
     }

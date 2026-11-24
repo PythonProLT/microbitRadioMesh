@@ -31,7 +31,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.2 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.8.3 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount()
         }
         if (verb == "READ") {
@@ -81,7 +81,7 @@ namespace sensornode {
         if (verb == "SONAR") {
             const p = parseFloat(commands.word(2, payload))
             if (!(p >= 0 && p <= 16)) return "ERR usage: SONAR <pin 0-16>"
-            // three independent readings, with the radio off and a pause between pings (same on serial and mesh)
+            // three independent readings, with our own sending held and a pause between pings (same on serial and mesh)
             mesh.pauseRadio()
             const us = channel.sonarEchoUs(p)
             basic.pause(80)

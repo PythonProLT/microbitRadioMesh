@@ -348,8 +348,8 @@ namespace channel {
     //% pin.min=0 pin.max=16 pin.defl=2
     //% group="Readings" weight=36
     export function sonarMm(pin: number): number {
-        // Only the ElecFreaks sonarbit extension reads the sonar. The radio is switched off for the
-        // reading so that traffic can't disturb the timing, and a 0 ("no echo") is retried a couple of times.
+        // Only the ElecFreaks sonarbit extension reads the sonar. Our own sending is held during the
+        // reading, and a 0 ("no echo") is retried a couple of times.
         mesh.pauseRadio()
         let mm = 0
         for (let i = 0; i < 3 && mm == 0; i++) {
