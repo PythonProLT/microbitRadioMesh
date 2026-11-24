@@ -400,6 +400,8 @@ namespace channel {
     const SCAN_MS = 8000
     // pins that are free to use: not the LED screen (3 4 6 7 9 10), buttons (5 11) or I2C (19 20)
     const DIGITAL_CANDIDATES = [0, 1, 2, 8, 12, 13, 14, 15, 16]
+    // PIR/digital pairing scans every usable pin (not P5/P11, the buttons, which are always high)
+    const DIGITAL_SCAN = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16]
     const ANALOG_CANDIDATES = [0, 1, 2]
 
     function pinInUse(p: number): boolean {
@@ -436,14 +438,14 @@ namespace channel {
     }
 
     function pairDigital(ch: number, k: string): string {
-        for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
-            if (!pinInUse(DIGITAL_CANDIDATES[i])) pins.setPull(digitalPin(DIGITAL_CANDIDATES[i]), PinPullMode.PullDown)
+        for (let i = 0; i < DIGITAL_SCAN.length; i++) {
+            if (!pinInUse(DIGITAL_SCAN[i])) pins.setPull(digitalPin(DIGITAL_SCAN[i]), PinPullMode.PullDown)
         }
         let found = -1
         const end = input.runningTime() + SCAN_MS
         while (found < 0 && input.runningTime() < end) {
-            for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
-                const p = DIGITAL_CANDIDATES[i]
+            for (let i = 0; i < DIGITAL_SCAN.length; i++) {
+                const p = DIGITAL_SCAN[i]
                 if (!pinInUse(p) && pins.digitalReadPin(digitalPin(p)) == 1) {
                     found = p
                     break
@@ -451,11 +453,15 @@ namespace channel {
             }
             basic.pause(10)
         }
-        for (let i = 0; i < DIGITAL_CANDIDATES.length; i++) {
-            const p = DIGITAL_CANDIDATES[i]
+        for (let i = 0; i < DIGITAL_SCAN.length; i++) {
+            const p = DIGITAL_SCAN[i]
             if (!pinInUse(p) && p != found) pins.setPull(digitalPin(p), PinPullMode.PullNone)
         }
-        if (found < 0) return "ERR no active " + k + " found in 8 s"
+        let busy = ""
+        for (let i = 0; i < DIGITAL_SCAN.length; i++) {
+            if (pinInUse(DIGITAL_SCAN[i])) busy += (busy == "" ? "" : ",") + DIGITAL_SCAN[i]
+        }
+        if (found < 0) return (busy != "" ? "pins skipped, already used by a channel: " + busy + ". " : "") + "ERR no active " + k + " found in 8 s on any free pin (wait ~30 s after power-up, then wave right in front of it; or SET chN " + k + " <pin>)"
         return configure(ch, k, found, 0)
     }
 
