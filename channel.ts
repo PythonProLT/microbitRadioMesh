@@ -348,9 +348,16 @@ namespace channel {
     //% pin.min=0 pin.max=16 pin.defl=2
     //% group="Readings" weight=36
     export function sonarMm(pin: number): number {
-        // only the ElecFreaks sonarbit extension is used to read the sonar; wait for a quiet radio first
-        mesh.waitQuiet(500)
-        return sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
+        // Only the ElecFreaks sonarbit extension reads the sonar. The radio is switched off for the
+        // reading so that traffic can't disturb the timing, and a 0 ("no echo") is retried a couple of times.
+        mesh.pauseRadio()
+        let mm = 0
+        for (let i = 0; i < 3 && mm == 0; i++) {
+            if (i > 0) basic.pause(70)
+            mm = sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
+        }
+        mesh.resumeRadio()
+        return mm
     }
 
     function readKind(k: string, p: number): number {

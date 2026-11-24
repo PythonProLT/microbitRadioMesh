@@ -31,7 +31,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.1 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.8.2 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount()
         }
         if (verb == "READ") {
@@ -81,10 +81,14 @@ namespace sensornode {
         if (verb == "SONAR") {
             const p = parseFloat(commands.word(2, payload))
             if (!(p >= 0 && p <= 16)) return "ERR usage: SONAR <pin 0-16>"
+            // three independent readings, with the radio off and a pause between pings (same on serial and mesh)
+            mesh.pauseRadio()
             const us = channel.sonarEchoUs(p)
-            // independent readings: pulseIn, pin polling, and the sonarbit extension on its own
+            basic.pause(80)
             const poll = channel.sonarPollUs(p)
+            basic.pause(80)
             const sb = sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, channel.digitalPin(p))
+            mesh.resumeRadio()
             return "p" + p + " pulsein_us=" + us + " poll_us=" + poll + " sonarbit_mm=" + sb
         }
         if (verb == "HELP") return "PING STATUS STATS HEAR SPEAK READ n SONAR n LEAVE s TIME DATE CFG SET PAIR UNPAIR"
@@ -97,13 +101,12 @@ namespace sensornode {
     }
 
     // background jobs: pairing takes seconds, and sensor readings are timing-sensitive, so they are done here
-    // (not inside the radio's message handler) and only once the radio has gone quiet
+    // (not inside the radio's message handler) and with the radio switched off during the reading itself
     function pairLoop() {
         while (true) {
             while (jobText.length > 0) {
                 const text = jobText.shift()
                 const from = jobFrom.shift()
-                mesh.waitQuiet(600)
                 mesh.send(from, respond(text))
             }
             if (pairCommand != "") {

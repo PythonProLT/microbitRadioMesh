@@ -66,6 +66,8 @@ namespace mesh {
     let txQueue: string[] = []
     let txDue: number[] = []
     let pumping = false
+    let groupNum = 0
+    let radioPaused = false
     let lastRxMs = 0
     let seen: string[] = []
     let pending: Assembly[] = []
@@ -319,6 +321,7 @@ namespace mesh {
     //% group.min=0 group.max=255 group.defl=1
     //% group="Node" weight=90
     export function start(group: number) {
+        groupNum = group
         radio.setGroup(group)
         radio.setTransmitPower(7)
         nodeName = nodestore.getName(nodeName)
@@ -349,7 +352,9 @@ namespace mesh {
     //% block="mesh send to %to message %payload"
     //% group="Messages" weight=100
     export function send(to: string, payload: string) {
-        if (!started || isAway()) return
+        if (!started) return
+        for (let w = 0; w < 100 && radioPaused; w++) basic.pause(10)   // a sensor reading has the radio off for a moment
+        if (isAway()) return
         const target = cleanName(to)
         const me = nodeName
         if (target.length == 0) return
@@ -450,6 +455,28 @@ namespace mesh {
         }
     }
 
+    /**
+     * Switch the radio off so nothing can disturb a timing-sensitive reading (the sonar). Always follow it
+     * with resumeRadio. While it is off, nothing is sent or heard (a reading takes well under a second).
+     */
+    //% blockHidden=true
+    export function pauseRadio() {
+        if (!started || radioPaused) return
+        radioPaused = true
+        radio.off()
+    }
+
+    /** Switch the radio back on after pauseRadio, with the same group and power as before. */
+    //% blockHidden=true
+    export function resumeRadio() {
+        if (!radioPaused) return
+        radio.on()
+        radio.setGroup(groupNum)
+        radio.setTransmitPower(7)
+        lastRxMs = input.runningTime()
+        radioPaused = false
+    }
+
     function queueTx(frame: string, delayMs: number) {
         txQueue.push(frame)
         txDue.push(input.runningTime() + delayMs)
@@ -462,6 +489,7 @@ namespace mesh {
     /** Sends queued relays that are due. Called by the background loop; not a block. */
     //% blockHidden=true
     export function pump() {
+        if (radioPaused) return
         const t = input.runningTime()
         for (let i = 0; i < txQueue.length; i++) {
             if (txDue[i] <= t) {
