@@ -400,8 +400,8 @@ namespace channel {
     const SCAN_MS = 8000
     // pins that are free to use: not the LED screen (3 4 6 7 9 10), buttons (5 11) or I2C (19 20)
     const DIGITAL_CANDIDATES = [0, 1, 2, 8, 12, 13, 14, 15, 16]
-    // PIR/digital pairing scans every usable pin (not P5/P11, the buttons, which are always high)
-    const DIGITAL_SCAN = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16]
+    // PIR/digital pairing scans these pins (not P3/4/6/7/9/10, shared with the display, nor P5/P11, the buttons)
+    const DIGITAL_SCAN = [0, 1, 2, 8, 12, 13, 14, 15, 16]
     const ANALOG_CANDIDATES = [0, 1, 2]
 
     function pinInUse(p: number): boolean {
@@ -441,13 +441,18 @@ namespace channel {
         for (let i = 0; i < DIGITAL_SCAN.length; i++) {
             if (!pinInUse(DIGITAL_SCAN[i])) pins.setPull(digitalPin(DIGITAL_SCAN[i]), PinPullMode.PullDown)
         }
+        // a pin that is already high when the scan starts is not a sensor waiting to fire: ignore it
+        basic.pause(100)
+        const skip: boolean[] = []
+        for (let i = 0; i < DIGITAL_SCAN.length; i++) {
+            skip.push(pinInUse(DIGITAL_SCAN[i]) || pins.digitalReadPin(digitalPin(DIGITAL_SCAN[i])) == 1)
+        }
         let found = -1
         const end = input.runningTime() + SCAN_MS
         while (found < 0 && input.runningTime() < end) {
             for (let i = 0; i < DIGITAL_SCAN.length; i++) {
-                const p = DIGITAL_SCAN[i]
-                if (!pinInUse(p) && pins.digitalReadPin(digitalPin(p)) == 1) {
-                    found = p
+                if (!skip[i] && pins.digitalReadPin(digitalPin(DIGITAL_SCAN[i])) == 1) {
+                    found = DIGITAL_SCAN[i]
                     break
                 }
             }
