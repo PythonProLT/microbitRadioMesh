@@ -1172,32 +1172,35 @@ namespace channel {
         for (let i = 0; i < DIGITAL_SCAN.length; i++) {
             if (!pinInUse(DIGITAL_SCAN[i])) pins.setPull(digitalPin(DIGITAL_SCAN[i]), PinPullMode.PullDown)
         }
-        // a pin that is already high when the scan starts is not a sensor waiting to fire: ignore it
-        basic.pause(100)
-        const skip: boolean[] = []
+        basic.pause(50)
+        // A sensor pin is one that CHANGES while we watch (seen both low and high). A pin stuck high
+        // (like P3 on the display) or stuck low (nothing connected) is not a sensor.
+        const sawLow: boolean[] = []
+        const sawHigh: boolean[] = []
         for (let i = 0; i < DIGITAL_SCAN.length; i++) {
-            skip.push(pinInUse(DIGITAL_SCAN[i]) || pins.digitalReadPin(digitalPin(DIGITAL_SCAN[i])) == 1)
+            sawLow.push(false)
+            sawHigh.push(false)
         }
         let found = -1
-        const end = input.runningTime() + SCAN_MS
+        const end = input.runningTime() + 10000
         while (found < 0 && input.runningTime() < end) {
-            for (let i = 0; i < DIGITAL_SCAN.length; i++) {
-                if (!skip[i] && pins.digitalReadPin(digitalPin(DIGITAL_SCAN[i])) == 1) {
-                    found = DIGITAL_SCAN[i]
-                    break
-                }
+            for (let i = 0; i < DIGITAL_SCAN.length && found < 0; i++) {
+                if (pinInUse(DIGITAL_SCAN[i])) continue
+                if (pins.digitalReadPin(digitalPin(DIGITAL_SCAN[i])) == 1) sawHigh[i] = true
+                else sawLow[i] = true
+                if (sawHigh[i] && sawLow[i]) found = DIGITAL_SCAN[i]
             }
             basic.pause(10)
+        }
+        let stuck = ""
+        for (let i = 0; i < DIGITAL_SCAN.length; i++) {
+            if (sawHigh[i] && !sawLow[i]) stuck += (stuck == "" ? "" : ",") + DIGITAL_SCAN[i]
         }
         for (let i = 0; i < DIGITAL_SCAN.length; i++) {
             const p = DIGITAL_SCAN[i]
             if (!pinInUse(p) && p != found) pins.setPull(digitalPin(p), PinPullMode.PullNone)
         }
-        let busy = ""
-        for (let i = 0; i < DIGITAL_SCAN.length; i++) {
-            if (pinInUse(DIGITAL_SCAN[i])) busy += (busy == "" ? "" : ",") + DIGITAL_SCAN[i]
-        }
-        if (found < 0) return (busy != "" ? "pins skipped, already used by a channel: " + busy + ". " : "") + "ERR no active " + k + " found in 8 s on any free pin (wait ~30 s after power-up, then wave right in front of it; or SET chN " + k + " <pin>)"
+        if (found < 0) return "ERR " + k + " pin never changed in 10 s" + (stuck != "" ? ", always high: " + stuck : "")
         return configure(ch, k, found, 0)
     }
 
@@ -1587,7 +1590,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.6 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.8.7 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount()
         }
         if (verb == "READ") {
