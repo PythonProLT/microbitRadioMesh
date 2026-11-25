@@ -1590,8 +1590,8 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.7 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
-                " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount()
+            return "v=0.8.8 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+                " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount() + " clk=" + clock.time()
         }
         if (verb == "READ") {
             const n = parseFloat(commands.word(2, payload))
