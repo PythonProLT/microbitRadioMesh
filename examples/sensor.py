@@ -13,6 +13,8 @@
 
 sensornode.start(1)
 
+ch = 0
+value = 0
 lastSent = [-1000000, -1000000, -1000000, -1000000]
 
 def clear_log():
@@ -30,12 +32,14 @@ def on_unknown_command(verb, text):
 sensornode.on_unknown_command(on_unknown_command)
 
 def on_forever():
-    for ch in range(1, 5):
+    global ch, value
+    for index in range(4):
+        ch = index + 1
         if channel.enabled(ch):
             # channel.read reads the channel by its kind (sonar, pir, digital, mic or analog)
             value = channel.read(ch)
-            if channel.triggered(ch, value) and input.running_time() - lastSent[ch - 1] > channel.quiet_ms():
-                lastSent[ch - 1] = input.running_time()
+            if channel.triggered(ch, value) and input.running_time() - lastSent[index] > channel.quiet_ms():
+                lastSent[index] = input.running_time()
                 datalogger.log(datalogger.create_cv("timestamp", clock.date() + " " + clock.time()),
                     datalogger.create_cv("channel", ch),
                     datalogger.create_cv("kind", channel.kind(ch)),

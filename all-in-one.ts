@@ -1091,6 +1091,15 @@ namespace channel {
         return mm
     }
 
+    // PIR and digital sensors. A weak sensor output can sag below the digital input's switching voltage
+    // (and the default pull-down loads it more), so pins with an analog input (0 1 2) are read as analog and
+    // count as high above 50%. The other pins are read digitally with no pull resistor loading them.
+    function digitalLevel(p: number): number {
+        if (p == 0 || p == 1 || p == 2) return pins.analogReadPin(analogPin(p)) >= 512 ? 1 : 0
+        pins.setPull(digitalPin(p), PinPullMode.PullNone)
+        return pins.digitalReadPin(digitalPin(p))
+    }
+
     function readKind(k: string, p: number): number {
         if (customHandler) {
             // your program gets the first go (for example to read a sonar with its own extension)
@@ -1102,7 +1111,7 @@ namespace channel {
         if (k == "sonar") return sonarMm(p)
         if (k == "mic") return analogPeak(p, 50)
         if (k == "analog") return pins.analogReadPin(analogPin(p))
-        if (k == "digital" || k == "pir") return pins.digitalReadPin(digitalPin(p))
+        if (k == "digital" || k == "pir") return digitalLevel(p)
         return 0
     }
 
@@ -1170,7 +1179,7 @@ namespace channel {
 
     function pairDigital(ch: number, k: string): string {
         for (let i = 0; i < DIGITAL_SCAN.length; i++) {
-            if (!pinInUse(DIGITAL_SCAN[i])) pins.setPull(digitalPin(DIGITAL_SCAN[i]), PinPullMode.PullDown)
+            if (!pinInUse(DIGITAL_SCAN[i])) pins.setPull(digitalPin(DIGITAL_SCAN[i]), PinPullMode.PullNone)
         }
         basic.pause(50)
         // A sensor pin is one that CHANGES while we watch (seen both low and high). A pin stuck high
@@ -1186,7 +1195,7 @@ namespace channel {
         while (found < 0 && input.runningTime() < end) {
             for (let i = 0; i < DIGITAL_SCAN.length && found < 0; i++) {
                 if (pinInUse(DIGITAL_SCAN[i])) continue
-                if (pins.digitalReadPin(digitalPin(DIGITAL_SCAN[i])) == 1) sawHigh[i] = true
+                if (digitalLevel(DIGITAL_SCAN[i]) == 1) sawHigh[i] = true
                 else sawLow[i] = true
                 if (sawHigh[i] && sawLow[i]) found = DIGITAL_SCAN[i]
             }
@@ -1590,7 +1599,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.8 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.8.9 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount() + " clk=" + clock.time()
         }
         if (verb == "READ") {
