@@ -1,0 +1,25 @@
+{
+    "name": "radio-mesh",
+    "version": "0.8.9",
+    "description": "Named-node radio mesh (flooding relay) for micro:bit V2 with sensor nodes, a main node, saved configuration and remote commands",
+    "dependencies": {
+        "core": "*",
+        "radio": "*",
+        "flashstorage": "github:bsiever/microbit-pxt-flashstorage#master",
+        "sonarbit": "github:elecfreaks/pxt-sonarbit#master"
+    },
+    "files": [
+        "README.md",
+        "nodestore.ts",
+        "mesh.ts",
+        "channel.ts",
+        "commands.ts",
+        "clock.ts",
+        "sensornode.ts",
+        "mainnode.ts"
+    ],
+    "supportedTargets": [
+        "microbit"
+    ],
+    "public": true
+}
