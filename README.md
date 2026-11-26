@@ -258,3 +258,16 @@ calls "on sync" with the sync number, its millisecond counter at that moment and
 logs that as a row (`kind` = `sync`, `pin` = hops, `value` = the sync number, `ms` = the counter). The Python
 tools in `hallway/` use those rows to put every node on one timeline. Send `SYNC` before you leave and again when
 you get back: two syncs let the tools correct the small drift between the micro:bits' crystals.
+
+
+## Finding a node (BEEP)
+
+`@north1 BEEP` makes north1 beep three times, show a heart and scroll its own name on the LED screen, so you can tell
+which micro:bit is which. `@north1 BEEP hello` scrolls "hello" instead (one word). It works over radio or USB serial.
+
+
+## Automatic SYNC (no one needs to be there)
+
+Put `send SYNC to all nodes every 10 minutes` in "on start" of ONE node (use a motion-sensor node, not a sonar node). It sends
+`SYNC` to everyone on that schedule and logs its own sync row (0 hops) through `on sync`. The other nodes log what they hear.
+The Python tools use all of those rows to line the clocks up and remove drift, so you don't need to run `SYNC` by hand at the end.

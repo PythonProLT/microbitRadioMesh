@@ -1593,6 +1593,10 @@ namespace sensornode {
     let syncIds: number[] = []
     let syncMss: number[] = []
     let syncHops: number[] = []
+    let beepText = ""
+    let beaconOn = false
+    let beaconId = randint(10000, 18999)   // numbers of the SYNCs this node sends (main's are below 10000)
+    let beepPending = false
 
     /** Work out the reply to one command. (PAIR is handled separately when it arrives by radio.) */
     function respond(payload: string): string {
@@ -1600,8 +1604,14 @@ namespace sensornode {
         const configReply = commands.run(payload)
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
+        if (verb == "BEEP") {
+            // BEEP = beep and show this node's name; BEEP hi = beep and show "hi". Done in the background loop.
+            beepText = commands.word(2, payload).length > 0 ? commands.word(2, payload) : mesh.myName()
+            beepPending = true
+            return "OK beeping"
+        }
         if (verb == "STATUS") {
-            return "v=0.10.2 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.10.4 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount() + " clk=" + clock.time()
         }
         if (verb == "READ") {
@@ -1660,7 +1670,7 @@ namespace sensornode {
             mesh.resumeRadio()
             return "p" + p + " pulsein_us=" + us + " poll_us=" + poll + " sonarbit_mm=" + sb
         }
-        if (verb == "HELP") return "PING STATUS STATS HEAR SPEAK READ n SONAR n LEAVE s TIME DATE CFG SET PAIR UNPAIR"
+        if (verb == "HELP") return "PING BEEP STATUS STATS HEAR SPEAK READ n SONAR n LEAVE s TIME DATE CFG SET PAIR UNPAIR"
         if (commandHandler) {
             replyText = ""
             commandHandler(verb, payload)
@@ -1678,6 +1688,17 @@ namespace sensornode {
                 const sms = syncMss.shift()
                 const shops = syncHops.shift()
                 if (syncHandler) syncHandler(sid, sms, shops)
+            }
+            if (beepPending) {
+                beepPending = false
+                for (let i = 0; i < 3; i++) {
+                    music.playTone(880, 150)
+                    basic.pause(80)
+                }
+                basic.showIcon(IconNames.Heart)
+                basic.pause(400)
+                basic.showString(beepText)
+                basic.clearScreen()
             }
             while (jobText.length > 0) {
                 const text = jobText.shift()
@@ -1713,7 +1734,10 @@ namespace sensornode {
                     syncMss.push(arrived)
                     syncHops.push(mesh.lastHops())
                 }
-                mesh.send(sender, "SYNCED " + commands.word(2, payload) + " hops=" + mesh.lastHops())
+                // only the main node wants an answer; another node that sends SYNC would be flooded with replies
+                if (sender == "main") mesh.send(sender, "SYNCED " + commands.word(2, payload) + " hops=" + mesh.lastHops())
+            } else if (commands.word(1, payload).toUpperCase() == "SYNCED") {
+                // an answer to a SYNC, nothing to do (and answering it would start a loop)
             } else if (commands.word(1, payload).toUpperCase() == "PAIR") {
                 pairCommand = payload
                 pairReplyTo = sender
@@ -1743,6 +1767,35 @@ namespace sensornode {
             if (reply != "") serial.writeLine(reply)
         })
         control.inBackground(pairLoop)
+    }
+
+    /**
+     * Make THIS node send a SYNC to every node, now and then, without anyone typing it on the main node.
+     * Use it on one node that has battery to spare (a motion-sensor node, not a sonar node: it
+     * sends the SYNC at an exact moment). It logs its own sync row too, through "on sync", with 0 hops.
+     * Every node's log then gets sync rows all through the recording, which fixes clock drift
+     * even if nobody is there to run SYNC at the end.
+     */
+    //% block="send SYNC to all nodes every %minutes minutes"
+    //% minutes.min=1 minutes.max=240 minutes.defl=10
+    //% group="Sensor node" weight=86
+    export function syncEvery(minutes: number) {
+        if (beaconOn) return
+        beaconOn = true
+        control.inBackground(function () {
+            basic.pause(30000)        // let the mesh settle first
+            while (true) {
+                beaconId += 1
+                const now = input.runningTime()
+                mesh.send("*", "SYNC " + beaconId)
+                if (syncIds.length < 4) {
+                    syncIds.push(beaconId)
+                    syncMss.push(now)
+                    syncHops.push(0)
+                }
+                basic.pause(Math.max(1, minutes) * 60000)
+            }
+        })
     }
 
     /**

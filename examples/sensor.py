@@ -8,6 +8,8 @@
 # Name it once over USB:                SET name north1
 
 sensornode.start(1)
+# On ONE motion-sensor node only (not a sonar node), also keep the clocks lined up by itself:
+# sensornode.sync_every(10)
 datalogger.set_column_titles("timestamp", "channel", "kind", "pin", "value", "ms")
 
 # when the flash is full, wipe it and start again
