@@ -29,9 +29,9 @@ sensornode.on_sync(on_sync)
 def on_forever():
     if sensornode.sensor_triggered():
         datalogger.log(datalogger.create_cv("timestamp", clock.date() + " " + clock.time()),
-            datalogger.create_cv("channel", sensornode.triggered_sensor_channel()),
-            datalogger.create_cv("kind", sensornode.triggered_sensor_kind()),
-            datalogger.create_cv("pin", sensornode.triggered_sensor_pin()),
-            datalogger.create_cv("value", sensornode.triggered_sensor_reading()),
+            datalogger.create_cv("channel", sensornode.triggered_channel()),
+            datalogger.create_cv("kind", sensornode.triggered_kind()),
+            datalogger.create_cv("pin", sensornode.triggered_pin()),
+            datalogger.create_cv("value", sensornode.triggered_reading()),
             datalogger.create_cv("ms", input.running_time()))
 basic.forever(on_forever)
