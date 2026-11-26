@@ -103,6 +103,7 @@ Every line you type is echoed back as `> line` and then answered. From the main 
 | Block | What it does |
 |---|---|
 | `start sensor mesh` | joins the mesh with the saved name, relays other nodes' messages, answers `PAIR`, `TIME`, `DATE`, `STATUS`, `READ`, `CFG`, `SET`... |
+| `report channel _ reading _ to main` | tells the main node a sensor triggered (use after logging it) |
 | `on unknown command` / `reply with` | your program answers commands the extension doesn't know, like `LOGCLEAR` |
 | `start main mesh` | joins as `main`, relays, keeps the clock, runs the serial console |
 | `on report received` | your blocks run for every message `main` receives (detections and replies) |
@@ -244,3 +245,15 @@ Replies start with `OK`, `ERR`, `NONE` or are the value itself.
 ## License
 
 MIT
+
+
+## Lining up clocks on separate micro:bits (SYNC)
+
+The clock set by `TIME` and `DATE` counts whole seconds, which is too coarse to compare two sonars that fire a
+fraction of a second apart. Each micro:bit also has a millisecond counter, but two micro:bits' counters don't match.
+
+Type `SYNC` in the main node's console. Every sensor node that hears it replies `SYNCED <number> hops=<n>` and
+calls "on sync" with the sync number, its millisecond counter at that moment and the hops. `examples/sensor.py`
+logs that as a row (`kind` = `sync`, `pin` = hops, `value` = the sync number, `ms` = the counter). The Python
+tools in `hallway/` use those rows to put every node on one timeline. Send `SYNC` before you leave and again when
+you get back: two syncs let the tools correct the small drift between the micro:bits' crystals.

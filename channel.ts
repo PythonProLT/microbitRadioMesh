@@ -348,14 +348,10 @@ namespace channel {
     //% pin.min=0 pin.max=16 pin.defl=2
     //% group="Readings" weight=36
     export function sonarMm(pin: number): number {
-        // Only the ElecFreaks sonarbit extension reads the sonar. Our own sending is held during the
-        // reading, and a 0 ("no echo") is retried a couple of times.
+        // Only the ElecFreaks sonarbit extension reads the sonar. Our own sending is held during the reading.
+        // One ping only (0 means nothing in range), so a loop over several sonars stays fast.
         mesh.pauseRadio()
-        let mm = 0
-        for (let i = 0; i < 3 && mm == 0; i++) {
-            if (i > 0) basic.pause(70)
-            mm = sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
-        }
+        const mm = sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
         mesh.resumeRadio()
         return mm
     }

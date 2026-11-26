@@ -12,6 +12,7 @@
  *                           (also: pir, digital, mic, analog; trigger the sensor while it scans)
  *   TIME 12 34 56           set this clock and every node's clock
  *   DATE 11 21 2026         set this date and every node's date (month day year)
+ *   SYNC                    every node logs its millisecond counter at this moment (run it before and after a recording)
  *   SET name main / CFG     configure this micro:bit itself
  *   @north1 LEAVE 60        take north1 out of the mesh for 60 s (it rejoins by itself)
  *   LEAVE 60 | JOIN         the same for this main node, or rejoin early
@@ -35,6 +36,7 @@ namespace mainnode {
     let consoleHandler: (verb: string, text: string) => void = null
     // the report that is being handled right now
     let showHops = true
+    let syncId = randint(100, 8999)    // numbers the SYNC commands (random start, so two sessions don't share numbers)
     let curSender = ""
     let curText = ""
 
@@ -50,7 +52,7 @@ namespace mainnode {
     function help() {
         serial.writeLine("@name <command>   send a command to a sensor (@* = all)")
         serial.writeLine("@name PAIR sonar   (sonar, pir, digital, mic, analog)")
-        serial.writeLine("TIME 12 34 56   DATE 11 21 2026")
+        serial.writeLine("TIME 12 34 56   DATE 11 21 2026   SYNC")
         serial.writeLine("sensor commands: PING STATUS READ n CFG SET PAIR UNPAIR")
     }
 
@@ -118,6 +120,10 @@ namespace mainnode {
             }
             mesh.send("*", line)
             serial.writeLine("OK DATE " + clock.date())
+        } else if (verb == "SYNC") {
+            syncId += 1
+            mesh.send("*", "SYNC " + syncId)
+            serial.writeLine("OK SYNC " + syncId + " sent; each node that hears it answers SYNCED")
         } else if (verb == "HELP") {
             help()
         } else if (!commands.handleSerialLine(line)) {

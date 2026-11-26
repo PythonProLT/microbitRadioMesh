@@ -5,7 +5,7 @@
  *
  * That one block joins the mesh with the node's saved name, relays other nodes' messages, keeps
  * the clock, and answers commands typed on USB serial or sent from the main node:
- *      PING  STATUS  READ 1  SONAR 2  TIME 12 34 56  DATE 11 21 2026  HELP
+ *      PING  STATUS  READ 1  SONAR 2  TIME 12 34 56  DATE 11 21 2026  SYNC (from main)  HELP
  *      CFG  SET ...  GET ...  PAIR sonar  UNPAIR 2
  * Over USB serial every line you type is echoed back as  > <line>  and then answered.
  * Your program reads the sensor (for example channel.sonarMm), logs with the datalogger and
@@ -23,6 +23,10 @@ namespace sensornode {
     let pairReplyTo = ""
     let replyText = ""
     let commandHandler: (verb: string, text: string) => void = null
+    let syncHandler: (syncId: number, ms: number, hops: number) => void = null
+    let syncIds: number[] = []
+    let syncMss: number[] = []
+    let syncHops: number[] = []
 
     /** Work out the reply to one command. (PAIR is handled separately when it arrives by radio.) */
     function respond(payload: string): string {
@@ -31,7 +35,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.9 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.10.1 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount() + " clk=" + clock.time()
         }
         if (verb == "READ") {
@@ -104,6 +108,12 @@ namespace sensornode {
     // (not inside the radio's message handler) and with the radio switched off during the reading itself
     function pairLoop() {
         while (true) {
+            while (syncIds.length > 0) {
+                const sid = syncIds.shift()
+                const sms = syncMss.shift()
+                const shops = syncHops.shift()
+                if (syncHandler) syncHandler(sid, sms, shops)
+            }
             while (jobText.length > 0) {
                 const text = jobText.shift()
                 const from = jobFrom.shift()
@@ -131,7 +141,15 @@ namespace sensornode {
         mesh.defaultName("unnamed")
         mesh.start(group)
         mesh.onMessage(function (sender: string, payload: string, to: string) {
-            if (commands.word(1, payload).toUpperCase() == "PAIR") {
+            const arrived = input.runningTime()   // read the millisecond counter first, for SYNC
+            if (commands.word(1, payload).toUpperCase() == "SYNC") {
+                if (syncIds.length < 4) {
+                    syncIds.push(parseFloat(commands.word(2, payload)))
+                    syncMss.push(arrived)
+                    syncHops.push(mesh.lastHops())
+                }
+                mesh.send(sender, "SYNCED " + commands.word(2, payload) + " hops=" + mesh.lastHops())
+            } else if (commands.word(1, payload).toUpperCase() == "PAIR") {
                 pairCommand = payload
                 pairReplyTo = sender
                 mesh.send(sender, "PAIRING, up to 8 s: trigger the sensor")
@@ -160,6 +178,29 @@ namespace sensornode {
             if (reply != "") serial.writeLine(reply)
         })
         control.inBackground(pairLoop)
+    }
+
+    /**
+     * Runs when the main node sends SYNC. It hands you the sync number, this micro:bit's millisecond counter at the
+     * moment the sync arrived, and how many hops it took. Log them as a row; classify.py uses those rows to line up
+     * the clocks of nodes that are on different micro:bits.
+     */
+    //% block="on sync"
+    //% draggableParameters="reporter"
+    //% group="Sensor node" weight=85
+    export function onSync(handler: (syncId: number, ms: number, hops: number) => void) {
+        syncHandler = handler
+    }
+
+    /**
+     * Tell the main node a sensor triggered. Sends: channel number, sensor kind, the time and the reading.
+     * Use it right after you log the detection with the datalogger.
+     */
+    //% block="report channel %ch reading %value to main"
+    //% ch.min=1 ch.max=4 ch.defl=1
+    //% group="Sensor node" weight=80
+    export function report(ch: number, value: number) {
+        mesh.send("main", "LOG " + ch + " " + channel.kind(ch) + " " + clock.time() + " " + value)
     }
 
     /**

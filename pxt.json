@@ -1,6 +1,6 @@
 {
     "name": "radio-mesh",
-    "version": "0.8.9",
+    "version": "0.10.1",
     "description": "Named-node radio mesh (flooding relay) for micro:bit V2 with sensor nodes, a main node, saved configuration and remote commands",
     "dependencies": {
         "core": "*",

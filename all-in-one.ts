@@ -1081,12 +1081,10 @@ namespace channel {
     //% pin.min=0 pin.max=16 pin.defl=2
     //% group="Readings" weight=36
     export function sonarMm(pin: number): number {
+        // Only the ElecFreaks sonarbit extension reads the sonar. Our own sending is held during the reading.
+        // One ping only (0 means nothing in range), so a loop over several sonars stays fast.
         mesh.pauseRadio()
-        let mm = 0
-        for (let i = 0; i < 3 && mm == 0; i++) {
-            if (i > 0) basic.pause(70)
-            mm = sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
-        }
+        const mm = sonarbit.sonarbit_distance(Distance_Unit.Distance_Unit_mm, digitalPin(pin))
         mesh.resumeRadio()
         return mm
     }
@@ -1591,6 +1589,10 @@ namespace sensornode {
     let pairReplyTo = ""
     let replyText = ""
     let commandHandler: (verb: string, text: string) => void = null
+    let syncHandler: (syncId: number, ms: number, hops: number) => void = null
+    let syncIds: number[] = []
+    let syncMss: number[] = []
+    let syncHops: number[] = []
 
     /** Work out the reply to one command. (PAIR is handled separately when it arrives by radio.) */
     function respond(payload: string): string {
@@ -1599,7 +1601,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.8.9 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.10.1 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount() + " clk=" + clock.time()
         }
         if (verb == "READ") {
@@ -1671,6 +1673,12 @@ namespace sensornode {
     // (not inside the radio's message handler) and only once the radio has gone quiet
     function pairLoop() {
         while (true) {
+            while (syncIds.length > 0) {
+                const sid = syncIds.shift()
+                const sms = syncMss.shift()
+                const shops = syncHops.shift()
+                if (syncHandler) syncHandler(sid, sms, shops)
+            }
             while (jobText.length > 0) {
                 const text = jobText.shift()
                 const from = jobFrom.shift()
@@ -1698,7 +1706,15 @@ namespace sensornode {
         mesh.defaultName("unnamed")
         mesh.start(group)
         mesh.onMessage(function (sender: string, payload: string, to: string) {
-            if (commands.word(1, payload).toUpperCase() == "PAIR") {
+            const arrived = input.runningTime()   // read the millisecond counter first, for SYNC
+            if (commands.word(1, payload).toUpperCase() == "SYNC") {
+                if (syncIds.length < 4) {
+                    syncIds.push(parseFloat(commands.word(2, payload)))
+                    syncMss.push(arrived)
+                    syncHops.push(mesh.lastHops())
+                }
+                mesh.send(sender, "SYNCED " + commands.word(2, payload) + " hops=" + mesh.lastHops())
+            } else if (commands.word(1, payload).toUpperCase() == "PAIR") {
                 pairCommand = payload
                 pairReplyTo = sender
                 mesh.send(sender, "PAIRING, up to 8 s: trigger the sensor")
@@ -1727,6 +1743,27 @@ namespace sensornode {
             if (reply != "") serial.writeLine(reply)
         })
         control.inBackground(pairLoop)
+    }
+
+    /**
+     * Runs when the main node sends SYNC (sync number, this micro:bit's millisecond counter at that moment, hops).
+     */
+    //% block="on sync"
+    //% draggableParameters="reporter"
+    //% group="Sensor node" weight=85
+    export function onSync(handler: (syncId: number, ms: number, hops: number) => void) {
+        syncHandler = handler
+    }
+
+    /**
+     * Tell the main node a sensor triggered. Sends: channel number, sensor kind, the time and the reading.
+     * Use it right after you log the detection with the datalogger.
+     */
+    //% block="report channel %ch reading %value to main"
+    //% ch.min=1 ch.max=4 ch.defl=1
+    //% group="Sensor node" weight=80
+    export function report(ch: number, value: number) {
+        mesh.send("main", "LOG " + ch + " " + channel.kind(ch) + " " + clock.time() + " " + value)
     }
 
     /**
@@ -1784,6 +1821,7 @@ namespace mainnode {
     let consoleHandler: (verb: string, text: string) => void = null
     // the report that is being handled right now
     let showHops = true
+    let syncId = randint(100, 8999)
     let curSender = ""
     let curText = ""
 
@@ -1799,7 +1837,7 @@ namespace mainnode {
     function help() {
         serial.writeLine("@name <command>   send a command to a sensor (@* = all)")
         serial.writeLine("@name PAIR sonar   (sonar, pir, digital, mic, analog)")
-        serial.writeLine("TIME 12 34 56   DATE 11 21 2026")
+        serial.writeLine("TIME 12 34 56   DATE 11 21 2026   SYNC")
         serial.writeLine("sensor commands: PING STATUS READ n CFG SET PAIR UNPAIR")
     }
 
@@ -1867,6 +1905,10 @@ namespace mainnode {
             }
             mesh.send("*", line)
             serial.writeLine("OK DATE " + clock.date())
+        } else if (verb == "SYNC") {
+            syncId += 1
+            mesh.send("*", "SYNC " + syncId)
+            serial.writeLine("OK SYNC " + syncId + " sent; each node that hears it answers SYNCED")
         } else if (verb == "HELP") {
             help()
         } else if (!commands.handleSerialLine(line)) {
