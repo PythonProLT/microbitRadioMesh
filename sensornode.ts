@@ -35,7 +35,7 @@ namespace sensornode {
         if (configReply != "") return configReply
         if (verb == "PING") return "PONG"
         if (verb == "STATUS") {
-            return "v=0.10.1 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
+            return "v=0.10.2 up=" + Math.idiv(input.runningTime(), 1000) + " t=" + input.temperature() +
                 " sig=" + mesh.lastSignal() + " rel=" + mesh.relayedCount() + " clk=" + clock.time()
         }
         if (verb == "READ") {
@@ -192,15 +192,59 @@ namespace sensornode {
         syncHandler = handler
     }
 
+    let lastTriggered = [-1000000, -1000000, -1000000, -1000000]
+    let hitChannel = 0
+    let hitValue = 0
+
     /**
-     * Tell the main node a sensor triggered. Sends: channel number, sensor kind, the time and the reading.
-     * Use it right after you log the detection with the datalogger.
+     * Checks every sensor you have set up and says true when one has triggered (a sonar sees something,
+     * a motion sensor goes high, ...). It also tells the main node, and won't trigger the same sensor again
+     * until its quiet time has passed. Use "triggered sensor ..." below to log what it saw.
      */
-    //% block="report channel %ch reading %value to main"
-    //% ch.min=1 ch.max=4 ch.defl=1
+    //% block="a sensor triggered"
+    //% group="Sensor node" weight=82
+    export function sensorTriggered(): boolean {
+        for (let n = 1; n <= 4; n++) {
+            if (!channel.enabled(n)) continue
+            const v = channel.read(n)
+            if (channel.triggered(n, v) && input.runningTime() - lastTriggered[n - 1] > channel.quietMs()) {
+                lastTriggered[n - 1] = input.runningTime()
+                hitChannel = n
+                hitValue = v
+                mesh.send("main", "LOG " + n + " " + channel.kind(n) + " " + clock.time() + " " + v)
+                return true
+            }
+        }
+        basic.pause(60)
+        return false
+    }
+
+    /** Channel number (1 to 4) of the sensor that just triggered. */
+    //% block="triggered sensor channel"
+    //% group="Sensor node" weight=81
+    export function triggeredChannel(): number {
+        return hitChannel
+    }
+
+    /** Kind of the sensor that just triggered: sonar, pir, digital, mic or analog. */
+    //% block="triggered sensor kind"
     //% group="Sensor node" weight=80
-    export function report(ch: number, value: number) {
-        mesh.send("main", "LOG " + ch + " " + channel.kind(ch) + " " + clock.time() + " " + value)
+    export function triggeredKind(): string {
+        return channel.kind(hitChannel)
+    }
+
+    /** Pin of the sensor that just triggered. */
+    //% block="triggered sensor pin"
+    //% group="Sensor node" weight=79
+    export function triggeredPin(): number {
+        return channel.pin(hitChannel)
+    }
+
+    /** Reading of the sensor that just triggered (sonar: mm, motion sensor: 1). */
+    //% block="triggered sensor reading"
+    //% group="Sensor node" weight=78
+    export function triggeredReading(): number {
+        return hitValue
     }
 
     /**

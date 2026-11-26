@@ -103,7 +103,8 @@ Every line you type is echoed back as `> line` and then answered. From the main 
 | Block | What it does |
 |---|---|
 | `start sensor mesh` | joins the mesh with the saved name, relays other nodes' messages, answers `PAIR`, `TIME`, `DATE`, `STATUS`, `READ`, `CFG`, `SET`... |
-| `report channel _ reading _ to main` | tells the main node a sensor triggered (use after logging it) |
+| `a sensor triggered` | checks all your sensors; true when one triggered (also reports it to main, with a quiet time per sensor) |
+| `triggered sensor channel / kind / pin / reading` | what that sensor saw, for your log |
 | `on unknown command` / `reply with` | your program answers commands the extension doesn't know, like `LOGCLEAR` |
 | `start main mesh` | joins as `main`, relays, keeps the clock, runs the serial console |
 | `on report received` | your blocks run for every message `main` receives (detections and replies) |
